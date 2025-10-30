@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>ATM Locator - VietinBank Cà Mau</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" type="image/svg+xml" href="./images/logo.svg">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <style>
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            margin: 0;
+            background: #f6f8fa;
+            height: 100vh;
+            overflow: hidden;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            background: rgba(255,255,255);
+            color: #005876;
+            padding: 8px 15px;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            height: 50px;
+        }
+        header img {
+            height: 30px;
+            margin-right: 10px;
+        }
+        h2 {
+            margin: 0;
+            font-size: 1.2em;
+        }
+        #controls {
+            position: fixed;
+            top: 60px;
+            left: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: rgba(255,255,255,0.5);
+            padding: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            align-items: center;
+        }
+        .btn {
+            background: #003A6E;
+            color: #fff;
+            border: none;
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        .btn:hover {
+            background: #00509E;
+        }
+        .btn.success {
+            background: #228B22;
+        }
+        .btn.success:hover {
+            background: #32CD32;
+        }
+        .btn.info {
+            background: #17a2b8;
+        }
+        .btn.info:hover {
+            background: #138496;
+        }
+        .btn.locate {
+            background: #003A6E;
+        }
+        .btn.locate:hover {
+            background: #00509E;
+        }
+        .btn.warning {
+            background: #47c0f6;
+        }
+        .btn.warning:hover {
+            background: #3ba7d9;
+        }
+        #nearestInfo {
+            flex: 1;
+            font-size: 0.85em;
+            text-align: center;
+            min-width: 100%;
+            margin-top: 4px;
+        }
+        #map {
+            height: 100vh;
+            width: 100%;
+        }
+
+        /* Move zoom controls to bottom-left */
+        .leaflet-top.leaflet-left {
+            top: auto !important;
+            bottom: 20px;
+        }
+
+        /* Satellite toggle button */
+        #satelliteBtn {
+            position: fixed;
+            bottom: 20px;
+            left: 70px;
+            z-index: 1000;
+            background: #fff;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 4px;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+            transition: background 0.2s;
+        }
+
+        #satelliteBtn:hover {
+            background: #f4f4f4;
+        }
+
+        #satelliteBtn.active {
+            background: #007cff;
+            color: #fff;
+        }
+
+        /* Hide attribution control */
+        .leaflet-control-attribution {
+            display: none !important;
+        }
+
+        @media (max-width: 600px) {
+            header {
+                padding: 5px 10px;
+                height: 45px;
+            }
+            h2 {
+                font-size: 1em;
+            }
+            #controls {
+                top: 55px;
+                left: 5px;
+                right: 5px;
+                padding: 6px;
+                gap: 4px;
+            }
+            .btn {
+                font-size: 0.75em;
+                padding: 5px 8px;
+            }
+            #nearestInfo {
+                font-size: 0.8em;
+            }
+
+            .leaflet-top.leaflet-left {
+                bottom: 15px;
+            }
+
+            #satelliteBtn {
+                bottom: 15px;
+                left: 60px;
+                width: 26px;
+                height: 26px;
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <img src="./images/logo.svg" alt="VietinBank Logo">
+        <h2 style="margin-top: 14px;">CN Cà Mau</h2>
+    </header>
+    <div id="controls">
+        <button id="locateBtn" class="btn locate">📍 Vị trí</button>
+        <button id="showAllBtn" class="btn info">🏢 PGD + ATM</button>
+        <button id="showATMBtn" class="btn success">🏧 ATM</button>
+        <button id="showPGDBtn" class="btn warning">🏢 PGD</button>
+        <div id="nearestInfo"></div>
+    </div>
+    <div id="satelliteBtn" title="Chuyển bản đồ vệ tinh">🛰️</div>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
