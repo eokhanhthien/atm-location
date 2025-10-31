@@ -6,6 +6,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" type="image/svg+xml" href="./images/logo.svg">
     <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <!-- Standard Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Real Leaflet Rotation Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-bearing@1.0.0/leaflet-bearing.min.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -143,6 +147,168 @@
             display: none !important;
         }
 
+        /* Navigation Panel */
+        #navigationPanel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            border-top: 1px solid #ddd;
+            padding: 15px;
+            z-index: 1500;
+            max-height: 40vh;
+            overflow-y: auto;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            box-shadow: 0 -4px 8px rgba(0,0,0,0.1);
+        }
+
+        #navigationPanel.active {
+            transform: translateY(0);
+        }
+
+        .navigation-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .navigation-info {
+            flex: 1;
+        }
+
+        .route-summary {
+            font-size: 1.1em;
+            font-weight: bold;
+            color: #003A6E;
+            margin-bottom: 5px;
+        }
+
+        .route-details {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .nav-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .nav-step {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.9em;
+        }
+
+        .nav-step:last-child {
+            border-bottom: none;
+        }
+
+        .step-icon {
+            width: 30px;
+            height: 30px;
+            background: #4285F4;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            margin-right: 12px;
+            font-size: 0.8em;
+        }
+
+        .step-text {
+            flex: 1;
+        }
+
+        .step-distance {
+            color: #666;
+            font-size: 0.8em;
+        }
+
+        /* Compass and Reset Controls */
+        .map-controls {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .control-btn {
+            width: 40px;
+            height: 40px;
+            background: white;
+            border: 2px solid rgba(0,0,0,0.2);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+            transition: all 0.2s;
+        }
+
+        .control-btn:hover {
+            background: #f4f4f4;
+            transform: scale(1.05);
+        }
+
+        .control-btn.active {
+            background: #4285F4;
+            color: white;
+        }
+
+        #compassBtn {
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        /* Compass needle */
+        .compass-needle {
+            transform-origin: center;
+            transition: transform 0.3s ease;
+        }
+
+        /* Mobile touch rotation support */
+        .leaflet-container {
+            touch-action: pan-x pan-y;
+        }
+
+
+
+        /* Rotation indicator */
+        .rotation-indicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            z-index: 2000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .rotation-indicator.active {
+            opacity: 1;
+        }
+
         @media (max-width: 600px) {
             header {
                 padding: 5px 10px;
@@ -177,6 +343,21 @@
                 height: 26px;
                 font-size: 12px;
             }
+
+            .map-controls {
+                bottom: 15px;
+                right: 15px;
+            }
+
+            .control-btn {
+                width: 35px;
+                height: 35px;
+                font-size: 14px;
+            }
+
+            #navigationPanel {
+                max-height: 50vh;
+            }
         }
     </style>
 </head>
@@ -193,8 +374,31 @@
         <div id="nearestInfo"></div>
     </div>
     <div id="satelliteBtn" title="Chuyển bản đồ vệ tinh">🛰️</div>
+    
+    <!-- Navigation Controls - Only show during navigation -->
+    <div class="map-controls" id="navigationControls" style="display: none;">
+        <div id="centerUserBtn" class="control-btn" title="Zoom về vị trí hiện tại">📍</div>
+        <div id="reopenNavBtn" class="control-btn" title="Mở lại chỉ đường">�️</div>
+    </div>
+
+    <!-- Rotation Indicator -->
+    <div id="rotationIndicator" class="rotation-indicator">🧭 0°</div>
+
+    <!-- Navigation Panel -->
+    <div id="navigationPanel">
+        <div class="navigation-header">
+            <div class="navigation-info">
+                <div class="route-summary" id="routeSummary">Đang tải chỉ đường...</div>
+                <div class="route-details" id="routeDetails">Vui lòng chờ...</div>
+            </div>
+            <div class="nav-controls" style="display: none;">
+                <!-- Navigation controls moved to map corner -->
+            </div>
+        </div>
+        <div id="navigationSteps"></div>
+    </div>
+
     <div id="map"></div>
-    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script src="main.js"></script>
 </body>
 </html>
