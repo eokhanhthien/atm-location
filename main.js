@@ -26,6 +26,7 @@ const map = L.map('map', {
 let navigationActive = false;
 let followMode = false;
 let watchPositionId = null;
+let currentBearing = 0;
 let currentUserHeading = 0; // Store current user heading
 let lastPosition = null; // Track previous position for heading calculation
 let defaultView = { lat: 9.1766, lng: 105.1524, zoom: 16 };
@@ -36,6 +37,12 @@ let routeCoordinates = []; // Full route coordinates
 let passedRouteCoordinates = []; // Coordinates already passed
 let currentDestination = null; // Current navigation destination
 let lastRouteUpdateTime = 0; // Throttle route updates
+
+// Rotation variables
+let isRotating = false;
+let mapPane = null;
+let startRotationAngle = 0;
+let rotationCenter = null;
 
 // User tracking variables
 let userAccuracyCircle = null;
@@ -53,9 +60,158 @@ satelliteLayer.addTo(map);
 let currentLayer = 'satellite';
 let userMarker, nearestATM, nearestPGD, routeLine, atmMarkers = [], pgdMarkers = [];
 
-// Map rotation disabled
+// Mobile-only touch rotation like Google Maps
+function initializeMapRotation() {
+    // DISABLED: Touch rotation functionality removed due to compatibility issues
+    console.log('Map rotation disabled');
+    return;
+    
+    const container = map.getContainer();
+    
+    console.log('Initializing mobile touch rotation only');
+    
+    // Touch rotation variables
+    let isTouchRotating = false;
+    let initialTouchAngle = 0;
+    let initialTouchDistance = 0;
+    let startBearing = 0;
+    
+    // Touch rotation (2-finger) - MOBILE ONLY
+    container.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 2) {
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            initialTouchDistance = getTouchDistance(touch1, touch2);
+            initialTouchAngle = getTouchAngle(touch1, touch2);
+            isTouchRotating = true;
+            startBearing = currentBearing;
+            
+            // Disable default Leaflet touch handling temporarily
+            map.touchZoom.disable();
+            map.dragging.disable();
+            
+            showRotationIndicator();
+            e.preventDefault();
+        }
+    }, { passive: false });
+    
+    container.addEventListener('touchmove', (e) => {
+        if (e.touches.length === 2 && isTouchRotating) {
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            
+            const currentDistance = getTouchDistance(touch1, touch2);
+            const currentAngle = getTouchAngle(touch1, touch2);
+            
+            // Calculate distance change for zoom vs rotate detection
+            const distanceChange = Math.abs(currentDistance - initialTouchDistance);
+            
+            if (distanceChange < 30) {
+                // If distance is stable, this is rotation
+                let angleDiff = currentAngle - initialTouchAngle;
+                
+                // Handle angle wrapping
+                if (angleDiff > 180) angleDiff -= 360;
+                if (angleDiff < -180) angleDiff += 360;
+                
+                // Only rotate if significant angle change
+                if (Math.abs(angleDiff) > 5) {
+                    rotateMapTouch(startBearing + angleDiff);
+                }
+            }
+            
+            e.preventDefault();
+        }
+    }, { passive: false });
+    
+    container.addEventListener('touchend', (e) => {
+        if (isTouchRotating) {
+            isTouchRotating = false;
+            hideRotationIndicator();
+            
+            // Re-enable Leaflet controls
+            setTimeout(() => {
+                map.touchZoom.enable();
+                map.dragging.enable();
+            }, 100);
+        }
+    });
+}
 
-// Rotation functions removed
+// Rotate map using proper Leaflet bearing API
+function rotateMapTouch(angle) {
+    // DISABLED: Rotation functionality removed
+    console.log('Rotation disabled, angle requested:', angle);
+    return;
+    
+    currentBearing = ((angle % 360) + 360) % 360;
+    
+    // Use Leaflet bearing API for real map rotation
+    if (map.setBearing) {
+        map.setBearing(currentBearing);
+        console.log('Map rotated to:', currentBearing, '°');
+    } else if (map.options.bearing !== undefined) {
+        // Fallback: set bearing option and refresh
+        map.options.bearing = currentBearing;
+        map.invalidateSize();
+        console.log('Map bearing set via options:', currentBearing, '°');
+    } else {
+        // Last resort: just update compass
+        console.log('No rotation API available, compass only');
+    }
+    
+    updateCompassNeedle();
+    updateRotationIndicator();
+}
+
+function getTouchDistance(touch1, touch2) {
+    const dx = touch1.clientX - touch2.clientX;
+    const dy = touch1.clientY - touch2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+}
+
+function getTouchAngle(touch1, touch2) {
+    const dx = touch2.clientX - touch1.clientX;
+    const dy = touch2.clientY - touch1.clientY;
+    return Math.atan2(dy, dx) * (180 / Math.PI);
+}
+
+function showRotationIndicator() {
+    const indicator = document.getElementById('rotationIndicator');
+    if (indicator) {
+        indicator.classList.add('active');
+        updateRotationIndicator();
+    } else {
+        console.log('Rotation indicator disabled');
+    }
+}
+
+function hideRotationIndicator() {
+    const indicator = document.getElementById('rotationIndicator');
+    if (indicator) {
+        indicator.classList.remove('active');
+    }
+}
+
+function showAutoReturnIndicator() {
+    // Tắt indicator - không hiển thị nữa
+    return;
+}
+
+function updateRotationIndicator() {
+    const indicator = document.getElementById('rotationIndicator');
+    if (indicator) {
+        const bearing = Math.round(currentBearing);
+        indicator.textContent = `🧭 ${bearing}°`;
+    }
+}
+
+// Map control functions
+function resetMapRotation() {
+    // DISABLED: Rotation functionality removed
+    console.log('Rotation reset disabled');
+}
 
 function resetMapView() {
     map.setView([defaultView.lat, defaultView.lng], defaultView.zoom);
@@ -71,24 +227,24 @@ function centerOnUser() {
 function updateCompassNeedle() {
     const needle = document.querySelector('.compass-needle');
     if (needle) {
-        needle.style.transform = `rotate(0deg)`;
+        needle.style.transform = `rotate(${-currentBearing}deg)`;
     }
 }
 
 function toggleFollowMode() {
     followMode = !followMode;
     const btn = document.getElementById('followBtn');
-
+    
     if (btn) {
         if (followMode) {
             btn.innerHTML = '🔒 Đang theo';
             btn.classList.add('active');
-
+            
             // Zoom sát vào user khi bật follow
             if (userMarker) {
                 map.setView(userMarker.getLatLng(), 19);
             }
-
+            
             if (!watchPositionId) {
                 startLocationTracking();
             }
@@ -109,7 +265,7 @@ function startLocationTracking() {
             timeout: 8000,               // Shorter timeout cho mobile
             maximumAge: 500              // Rất ngắn cho real-time updates
         };
-
+        
         watchPositionId = navigator.geolocation.watchPosition(
             (position) => {
                 updateUserPosition(position);
@@ -140,12 +296,12 @@ function updateUserPosition(position) {
     const lng = position.coords.longitude;
     let heading = position.coords.heading;
     const accuracy = position.coords.accuracy;
-
+    
     // Calculate heading from movement if GPS heading not available
     if ((heading === null || heading === undefined) && lastPosition) {
         const deltaLat = lat - lastPosition.lat;
         const deltaLng = lng - lastPosition.lng;
-
+        
         // Only calculate if there's significant movement (>5 meters)
         const distance = Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng) * 111000; // rough meters
         if (distance > 5) {
@@ -153,20 +309,20 @@ function updateUserPosition(position) {
             console.log('Calculated heading from movement:', heading.toFixed(1), '°, distance:', distance.toFixed(1), 'm');
         }
     }
-
+    
     // Store current position and heading for next calculation
     lastPosition = { lat, lng };
     if (heading !== null && heading !== undefined) {
         currentUserHeading = heading;
     }
-
+    
     if (userMarker) {
         // Update position
         userMarker.setLatLng([lat, lng]);
-
+        
         // Prioritize device orientation over GPS heading
         let finalHeading = null;
-
+        
         // 1. Try device compass first (real-time orientation)
         if (deviceOrientationHeading !== null) {
             finalHeading = deviceOrientationHeading;
@@ -182,19 +338,19 @@ function updateUserPosition(position) {
             const deltaLat = lat - lastPosition.lat;
             const deltaLng = lng - lastPosition.lng;
             const distance = Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng) * 111000;
-
+            
             if (distance > 3) {
                 finalHeading = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 90 + 360) % 360;
                 console.log(`🚶 Movement heading: ${getHeadingDirection(finalHeading)} (${finalHeading.toFixed(1)}°)`);
             }
         }
-
+        
         // Update icon if we have a valid heading
         if (finalHeading !== null) {
             const newIcon = createUserLocationIcon(finalHeading);
             userMarker.setIcon(newIcon);
         }
-
+        
         // Update accuracy circle - Skip during navigation
         if (userAccuracyCircle) {
             map.removeLayer(userAccuracyCircle);
@@ -208,24 +364,24 @@ function updateUserPosition(position) {
                 weight: 1
             }).addTo(map);
         }
-
+        
         // Auto follow during navigation - zoom sát
         if (navigationActive) {
             // Zoom sát và follow user trong navigation
             map.setView([lat, lng], 19);
-
+            
             // Smart routing: Update route progress and check for deviations
             if (routeCoordinates && routeCoordinates.length > 0) {
                 // Update progressive route (hide passed portions)
                 updateProgressiveRoute(lat, lng);
-
+                
                 // Check if user is off route
                 if (isUserOffRoute(lat, lng, routeCoordinates, 75)) {
                     console.log('User is off route, recalculating...');
                     recalculateRoute();
                 }
             }
-
+            
             // Rotate map theo hướng di chuyển - DISABLED
             // if (heading !== null && heading !== undefined) {
             //     rotateMapTouch(heading);
@@ -259,18 +415,18 @@ const pgdIcon = L.divIcon({
     popupAnchor: [0, -40]
 });
 
-// Create user location icon with simple static light beam like Google Maps
+// Create user location icon with simple mobile direction indicator
 function createUserLocationIcon(heading = 0) {
     return L.divIcon({
         html: `<div class="user-location-container" style="transform: rotate(${heading}deg)">
-            <div class="user-light-beam-outer"></div>
-            <div class="user-light-beam"></div>
+            <div class="user-direction-indicator"></div>
+            <div class="user-pulse-ring"></div>
             <div class="user-location-dot"></div>
         </div>`,
         className: 'custom-user-icon',
-        iconSize: [64, 64],
-        iconAnchor: [32, 32],
-        popupAnchor: [0, -32]
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+        popupAnchor: [0, -16]
     });
 }
 
@@ -329,69 +485,83 @@ style.textContent = `
         transform: rotate(45deg);
     }
     
-    /* Simple user location like Google Maps */
+    /* Google Maps style user location with direction arrow */
     .user-location-container {
         position: relative;
-        width: 64px;
-        height: 64px;
+        width: 32px;
+        height: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
         transform-origin: center center;
     }
     
-
-    
     .user-location-dot {
         position: absolute;
         width: 16px;
         height: 16px;
-        top: 24px;
-        left: 24px;
         background: #4285F4;
         border: 3px solid #fff;
         border-radius: 50%;
         box-shadow: 0 2px 8px rgba(66, 133, 244, 0.4);
-        z-index: 3;
-        transform: translate(-50%, -50%);
+        z-index: 2;
     }
     
-    /* Simple static light beam - like Google Maps */
-    .user-light-beam {
+    .user-direction-arrow {
         position: absolute;
-        width: 40px;
-        height: 60px;
-        top: -36px;
-        left: 5px;
-        background: linear-gradient(
-            to top,
-            rgba(66, 133, 244, 0.4) 0%,
-            rgba(66, 133, 244, 0.2) 50%,
-            transparent 100%
-        );
-        clip-path: polygon(40% 100%, 60% 100%, 70% 0%, 30% 0%);
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         z-index: 1;
-        transform-origin: 50% 100%;
     }
     
-
+    .arrow-body {
+        position: absolute;
+        width: 3px;
+        height: 20px;
+        background: #4285F4;
+        border-radius: 1.5px;
+        top: 2px;
+    }
     
-    /* Simple background circle - no animation */
+    .arrow-head {
+        position: absolute;
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-bottom: 8px solid #4285F4;
+        top: 0px;
+    }
+    
+    /* Pulsing animation for user location */
     .user-location-container::before {
         content: '';
         position: absolute;
-        width: 24px;
-        height: 24px;
-        top: 20px;
-        left: 20px;
-        background: rgba(66, 133, 244, 0.1);
+        width: 32px;
+        height: 32px;
+        background: rgba(66, 133, 244, 0.2);
         border-radius: 50%;
+        animation: pulse 2s infinite;
         z-index: 0;
     }
     
-
-    
-
+    @keyframes pulse {
+        0% {
+            transform: scale(0.5);
+            opacity: 1;
+        }
+        70% {
+            transform: scale(1.2);
+            opacity: 0.3;
+        }
+        100% {
+            transform: scale(1.5);
+            opacity: 0;
+        }
+    }
 `;
 document.head.appendChild(style);
 
@@ -483,29 +653,32 @@ popupStyle.textContent = `
 `;
 document.head.appendChild(popupStyle);
 
-// Function to show combined location & compass permission popup
+// Function to show location permission popup
 function showLocationPopup() {
     // Remove existing popup if any
     const existingPopup = document.querySelector('.location-popup-overlay');
     if (existingPopup) {
         existingPopup.remove();
     }
-
+    
     const popup = document.createElement('div');
     popup.className = 'location-popup-overlay';
     popup.innerHTML = `
         <div class="location-popup">
-            <h3>� Bật vị trí</h3>
-            <p>Cần vị trí để chỉ đường và compass để xem hướng di chuyển</p>
+            <h3>🗺️ Cần truy cập vị trí</h3>
+            <p>Để sử dụng tính năng chỉ đường, chúng tôi cần biết vị trí hiện tại của bạn.</p>
+            <p><strong>Vui lòng:</strong></p>
+            <p>1. Bấm "Cho phép" khi trình duyệt hỏi<br>
+               2. Hoặc bấm "📍 Vị trí" để bật định vị</p>
             <div class="location-popup-buttons">
-                <button class="btn-primary" onclick="enableLocationAndCompass()">Bật</button>
-                <button class="btn-secondary" onclick="closeLocationPopup()">Bỏ qua</button>
+                <button class="btn-primary" onclick="enableLocationAndClose()">📍 Bật vị trí ngay</button>
+                <button class="btn-secondary" onclick="closeLocationPopup()">Để sau</button>
             </div>
         </div>
     `;
-
+    
     document.body.appendChild(popup);
-
+    
     // Close popup when clicking overlay
     popup.addEventListener('click', (e) => {
         if (e.target === popup) {
@@ -515,46 +688,30 @@ function showLocationPopup() {
 }
 
 // Function to close location popup
-window.closeLocationPopup = function () {
+window.closeLocationPopup = function() {
     const popup = document.querySelector('.location-popup-overlay');
     if (popup) {
         popup.remove();
     }
 };
 
-// Function to enable both location and compass
-window.enableLocationAndCompass = function () {
+// Function to enable location and close popup
+window.enableLocationAndClose = function() {
     closeLocationPopup();
-    
-    console.log('🚀 Enabling both location and compass...');
-    
-    // First enable location
     document.getElementById('locateBtn').click();
-    
-    // Request compass permission immediately (don't wait)
-    console.log('📱 Requesting compass permission...');
-    requestDeviceOrientationPermission();
-    
-    // Also force compass tracking after location is ready
-    setTimeout(() => {
-        console.log('🧭 Force starting compass tracking...');
-        if (!deviceOrientationHeading) {
-            startDeviceOrientationTracking();
-        }
-    }, 2000);
 };
 
 // Execute pending navigation after location is obtained
 function executePendingNavigation() {
     if (pendingNavigation && userMarker) {
         console.log('Executing pending navigation to:', pendingNavigation.name);
-
+        
         if (pendingNavigation.type === 'atm') {
             routeToATM(pendingNavigation.lat, pendingNavigation.lng, pendingNavigation.name);
         } else if (pendingNavigation.type === 'pgd') {
             routeToPGD(pendingNavigation.lat, pendingNavigation.lng, pendingNavigation.name);
         }
-
+        
         // Clear pending navigation
         pendingNavigation = null;
     }
@@ -563,7 +720,7 @@ function executePendingNavigation() {
 // Simple navigation - just follow user closely
 function startSimpleNavigation(destination, route, destinationCoords = null) {
     navigationActive = true;
-
+    
     // Store route data for smart routing
     currentRoute = route;
     if (route && route.geometry && route.geometry.coordinates) {
@@ -574,38 +731,38 @@ function startSimpleNavigation(destination, route, destinationCoords = null) {
     passedRouteCoordinates = [];
     currentDestination = destinationCoords;
     lastRouteUpdateTime = 0;
-
+    
     console.log('Navigation started with', routeCoordinates.length, 'route points');
-
+    
     // Show simple info in nearestInfo instead of big panel
     const distance = (route.distance / 1000).toFixed(1);
     const duration = Math.round(route.duration / 60);
-
-    document.getElementById('nearestInfo').innerHTML =
+    
+    document.getElementById('nearestInfo').innerHTML = 
         `🎯 Đang đi đến <b>${destination}</b><br>📏 ${distance} km - ${duration} phút
         <button onclick="stopSimpleNavigation()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
             ❌ Dừng
         </button>`;
-
+    
     // Show navigation controls
     document.getElementById('navigationControls').style.display = 'flex';
-
+    
     // Auto start location tracking for navigation
     if (!watchPositionId) {
         startLocationTracking();
     }
-
+    
     // Auto zoom sát vào user location
     if (userMarker) {
         map.setView(userMarker.getLatLng(), 19); // Zoom level 19 - rất sát
     }
-
+    
     // Disable topbar buttons during navigation
     disableTopbarButtons();
-
+    
     // Enable auto follow mode
     followMode = true;
-
+    
     // Set up auto return to user when map is dragged
     setupAutoReturnToUser();
 }
@@ -624,7 +781,7 @@ function getStepIcon(maneuverType) {
         'depart': '🚀',
         'arrive': '🎯'
     };
-
+    
     return icons[maneuverType] || '⬆️';
 }
 
@@ -636,7 +793,7 @@ function setupAutoReturnToUser() {
     // DISABLED: Auto return functionality removed
     console.log('Auto return disabled');
     return;
-
+    
     // Reset timer on any map interaction
     function resetAutoReturnTimer() {
         if (navigationActive) {
@@ -644,10 +801,10 @@ function setupAutoReturnToUser() {
             if (autoReturnTimer) {
                 clearTimeout(autoReturnTimer);
             }
-
+            
             // Update last interaction time
             lastInteractionTime = Date.now();
-
+            
             // Set new timer for 3 seconds after interaction stops
             autoReturnTimer = setTimeout(() => {
                 if (navigationActive && userMarker) {
@@ -656,7 +813,7 @@ function setupAutoReturnToUser() {
                     if (timeSinceLastInteraction >= 3000) {
                         // Show brief indicator before returning
                         showAutoReturnIndicator();
-
+                        
                         setTimeout(() => {
                             if (navigationActive && userMarker) {
                                 map.setView(userMarker.getLatLng(), 19);
@@ -668,7 +825,7 @@ function setupAutoReturnToUser() {
             }, 3000);
         }
     }
-
+    
     // Listen for all map interaction events
     map.on('dragstart', resetAutoReturnTimer);
     map.on('dragend', resetAutoReturnTimer);
@@ -677,29 +834,29 @@ function setupAutoReturnToUser() {
     map.on('zoomend', resetAutoReturnTimer);
     map.on('movestart', resetAutoReturnTimer);
     map.on('moveend', resetAutoReturnTimer);
-
+    
     // Also listen for touch events on mobile
     map.getContainer().addEventListener('touchstart', resetAutoReturnTimer);
     map.getContainer().addEventListener('touchmove', resetAutoReturnTimer);
     map.getContainer().addEventListener('touchend', resetAutoReturnTimer);
 }
 
-window.stopSimpleNavigation = function () {
+window.stopSimpleNavigation = function() {
     navigationActive = false;
     followMode = false;
-
+    
     // Hide navigation controls
     document.getElementById('navigationControls').style.display = 'none';
-
+    
     // Stop tracking
     stopLocationTracking();
-
+    
     // Clear auto return timer - DISABLED
     // if (autoReturnTimer) {
     //     clearTimeout(autoReturnTimer);
     //     autoReturnTimer = null;
     // }
-
+    
     // Remove all map event listeners
     map.off('dragstart');
     map.off('dragend');
@@ -708,91 +865,91 @@ window.stopSimpleNavigation = function () {
     map.off('zoomend');
     map.off('movestart');
     map.off('moveend');
-
+    
     // Remove touch event listeners
-    map.getContainer().removeEventListener('touchstart', () => { });
-    map.getContainer().removeEventListener('touchmove', () => { });
-    map.getContainer().removeEventListener('touchend', () => { });
-
+    map.getContainer().removeEventListener('touchstart', () => {});
+    map.getContainer().removeEventListener('touchmove', () => {});
+    map.getContainer().removeEventListener('touchend', () => {});
+    
     // Remove route line
     if (routeLine) {
         map.removeLayer(routeLine);
         routeLine = null;
     }
-
+    
     // Clear smart routing data
     currentRoute = null;
     routeCoordinates = [];
     passedRouteCoordinates = [];
     currentDestination = null;
     lastRouteUpdateTime = 0;
-
+    
     // Clear info
     document.getElementById('nearestInfo').innerHTML = '';
-
+    
     // Re-enable topbar buttons
     enableTopbarButtons();
 };
 
 // Handle location - back to original simple version
-document.getElementById('locateBtn').onclick = function () {
+document.getElementById('locateBtn').onclick = function() {
     if (!navigator.geolocation) {
         alert('Trình duyệt không hỗ trợ định vị.');
         return;
     }
-
+    
     const button = this;
     button.innerHTML = '⏳ Đang tìm...';
     button.disabled = true;
-
+    
     // Mobile-optimized location options
     const options = {
         enableHighAccuracy: true,     // GPS cao cấp cho độ chính xác tối đa
         timeout: 12000,               // Đủ thời gian cho GPS lock
         maximumAge: 1000              // Cache ngắn cho dữ liệu fresh
     };
-
+    
     const successHandler = (pos) => {
         const userLat = pos.coords.latitude;
         const userLng = pos.coords.longitude;
-
+        
         console.log(`User location: ${userLat}, ${userLng}`);
-
+        
         // Remove previous markers and routes
         if (userMarker) map.removeLayer(userMarker);
         if (routeLine) map.removeLayer(routeLine);
-
+        
         // Show user location with direction arrow
         const initialIcon = createUserLocationIcon(0);
         userMarker = L.marker([userLat, userLng], {
             icon: initialIcon
         }).addTo(map).bindPopup("📍 Vị trí của bạn").openPopup();
-
+        
         map.setView([userLat, userLng], 17);
-
+        
         // Start continuous tracking for direction updates automatically
         startLocationTracking();
-
-        // FORCE compass permission dialog immediately
-        forceCompassPermission();
-
+        
+        // Initialize compass tracking for real-time beam direction
+        initializeCompassTracking();
+        
         // Optimize for mobile performance
         optimizeForMobile();
-
+        
         // Execute pending navigation if exists
         setTimeout(() => {
             executePendingNavigation();
         }, 500); // Small delay to ensure marker is fully created
-
+        
         button.innerHTML = '📍 Vị trí';
         button.disabled = false;
     };
-
+    
     const errorHandler = (err) => {
         console.error('Geolocation error:', err);
         let errorMsg = 'Không thể lấy vị trí của bạn.';
-
-        switch (err.code) {
+        
+        switch(err.code) {
             case err.PERMISSION_DENIED:
                 errorMsg = 'Bạn đã từ chối cấp quyền truy cập vị trí.\nVui lòng cho phép truy cập vị trí trong cài đặt trình duyệt.';
                 break;
@@ -803,12 +960,12 @@ document.getElementById('locateBtn').onclick = function () {
                 errorMsg = 'Quá thời gian chờ. Vui lòng thử lại.';
                 break;
         }
-
+        
         alert(errorMsg);
         button.innerHTML = '📍 Vị trí';
         button.disabled = false;
     };
-
+    
     navigator.geolocation.getCurrentPosition(successHandler, errorHandler, options);
 };
 
@@ -816,7 +973,7 @@ document.getElementById('locateBtn').onclick = function () {
 function addATMMarkers() {
     atmMarkers.forEach(marker => map.removeLayer(marker));
     atmMarkers = [];
-
+    
     atms.forEach(atm => {
         const marker = L.marker([atm.lat, atm.lng], { icon: atmIcon })
             .addTo(map)
@@ -838,7 +995,7 @@ function addATMMarkers() {
 function addPGDMarkers() {
     pgdMarkers.forEach(marker => map.removeLayer(marker));
     pgdMarkers = [];
-
+    
     pgds.forEach(pgd => {
         const marker = L.marker([pgd.lat, pgd.lng], { icon: pgdIcon })
             .addTo(map)
@@ -874,30 +1031,30 @@ function getDistance(lat1, lng1, lat2, lng2) {
     const R = 6371; // Earth's radius in km
     const dLat = toRad(lat2 - lat1);
     const dLng = toRad(lng2 - lng1); // CORRECTED: was lat2-lat1, should be lng2-lng1
-    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-        Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-        Math.sin(dLng / 2) * Math.sin(dLng / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+              Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+              Math.sin(dLng/2) * Math.sin(dLng/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
     const distance = R * c;
-
+    
     return distance;
 }
 
 // Show all ATMs and PGDs
-document.getElementById('showAllBtn').onclick = function () {
+document.getElementById('showAllBtn').onclick = function() {
     // Stop navigation if active
     if (navigationActive) {
         stopSimpleNavigation();
     }
-
+    
     clearAllMarkers();
     addATMMarkers();
     addPGDMarkers();
-
+    
     const allMarkers = [...atmMarkers, ...pgdMarkers];
     const group = new L.featureGroup(allMarkers);
     map.fitBounds(group.getBounds().pad(0.3));
-
+    
     this.innerHTML = '✅ Hiển thị tất cả';
     setTimeout(() => {
         this.innerHTML = '🏢 PGD + ATM';
@@ -905,23 +1062,23 @@ document.getElementById('showAllBtn').onclick = function () {
 };
 
 // Show only ATMs
-document.getElementById('showATMBtn').onclick = function () {
+document.getElementById('showATMBtn').onclick = function() {
     // Stop navigation if active
     if (navigationActive) {
         stopSimpleNavigation();
     }
-
+    
     clearAllMarkers();
     addATMMarkers();
-
+    
     // If user location exists, find nearest ATM
     if (userMarker) {
         findNearestATM();
     }
-
+    
     const group = new L.featureGroup(atmMarkers);
     map.fitBounds(group.getBounds().pad(0.3));
-
+    
     this.innerHTML = '✅ Chỉ ATM';
     setTimeout(() => {
         this.innerHTML = '🏧 ATM';
@@ -929,23 +1086,23 @@ document.getElementById('showATMBtn').onclick = function () {
 };
 
 // Show only PGDs
-document.getElementById('showPGDBtn').onclick = function () {
+document.getElementById('showPGDBtn').onclick = function() {
     // Stop navigation if active
     if (navigationActive) {
         stopSimpleNavigation();
     }
-
+    
     clearAllMarkers();
     addPGDMarkers();
-
+    
     // If user location exists, find nearest PGD
     if (userMarker) {
         findNearestPGD();
     }
-
+    
     const group = new L.featureGroup(pgdMarkers);
     map.fitBounds(group.getBounds().pad(0.3));
-
+    
     this.innerHTML = '✅ Chỉ PGD';
     setTimeout(() => {
         this.innerHTML = '🏢 PGD';
@@ -955,11 +1112,11 @@ document.getElementById('showPGDBtn').onclick = function () {
 // Find nearest ATM function
 function findNearestATM() {
     if (!userMarker) return;
-
+    
     const userLatLng = userMarker.getLatLng();
     let minDist = Infinity;
     nearestATM = null;
-
+    
     atms.forEach((atm) => {
         const dist = getDistance(userLatLng.lat, userLatLng.lng, atm.lat, atm.lng);
         if (dist < minDist) {
@@ -969,7 +1126,7 @@ function findNearestATM() {
     });
 
     if (nearestATM) {
-        document.getElementById('nearestInfo').innerHTML =
+        document.getElementById('nearestInfo').innerHTML = 
             `🏧 ATM gần nhất: <b>${nearestATM.name}</b><br>📏 Cách ${minDist.toFixed(2)} km
             <button onclick="routeToATM(${nearestATM.lat}, ${nearestATM.lng}, '${nearestATM.name}')" 
                     style="background: #228B22; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
@@ -981,11 +1138,11 @@ function findNearestATM() {
 // Find nearest PGD function
 function findNearestPGD() {
     if (!userMarker) return;
-
+    
     const userLatLng = userMarker.getLatLng();
     let minDist = Infinity;
     nearestPGD = null;
-
+    
     pgds.forEach((pgd) => {
         const dist = getDistance(userLatLng.lat, userLatLng.lng, pgd.lat, pgd.lng);
         if (dist < minDist) {
@@ -995,7 +1152,7 @@ function findNearestPGD() {
     });
 
     if (nearestPGD) {
-        document.getElementById('nearestInfo').innerHTML =
+        document.getElementById('nearestInfo').innerHTML = 
             `🏢 PGD gần nhất: <b>${nearestPGD.name}</b><br>📏 Cách ${minDist.toFixed(2)} km
             <button onclick="routeToPGD(${nearestPGD.lat}, ${nearestPGD.lng}, '${nearestPGD.name}')" 
                     style="background: #47c0f6; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
@@ -1005,7 +1162,7 @@ function findNearestPGD() {
 }
 
 // Route to specific ATM function (called from popup) - Enhanced with navigation
-window.routeToATM = async function (atmLat, atmLng, atmName) {
+window.routeToATM = async function(atmLat, atmLng, atmName) {
     if (!userMarker) {
         // Lưu thông tin để chỉ đường sau khi có location
         pendingNavigation = {
@@ -1017,24 +1174,24 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
         showLocationPopup();
         return;
     }
-
+    
     const userLatLng = userMarker.getLatLng();
-
+    
     try {
         // Remove existing route
         if (routeLine) map.removeLayer(routeLine);
-
+        
         // Get detailed route from OSRM with steps
         const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${atmLng},${atmLat}?overview=full&geometries=geojson&steps=true`);
         const data = await response.json();
-
+        
         if (data.routes && data.routes.length > 0) {
             const route = data.routes[0];
             const coordinates = route.geometry.coordinates;
-
+            
             // Convert coordinates to Leaflet format
             const latlngs = coordinates.map(coord => [coord[1], coord[0]]);
-
+            
             // Draw route with Google Maps-like styling
             routeLine = L.polyline(latlngs, {
                 color: '#4285F4',
@@ -1043,29 +1200,21 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
                 lineCap: 'round',
                 lineJoin: 'round'
             }).addTo(map);
-
+            
             // Fit map to show entire route
             map.fitBounds(routeLine.getBounds(), { padding: [20, 80] });
-
-            // Start simple navigation with destination coordinates
-            startSimpleNavigation(atmName, route, { lat: atmLat, lng: atmLng });
-
-            // FORCE compass permission for navigation - silently
-            if (!deviceOrientationHeading) {
-                console.log('🧭 Navigation started - requesting compass quietly');
-                setTimeout(() => {
-                    requestDeviceOrientationPermission();
-                }, 1000);
-            }
-
-            // Mobile haptic feedback when navigation starts
-            if ('vibrate' in navigator) {
-                navigator.vibrate([200, 100, 200]); // Short-long-short pattern
-            }            // Update info with route details
+            
+        // Start simple navigation with destination coordinates
+        startSimpleNavigation(atmName, route, { lat: atmLat, lng: atmLng });
+        
+        // Mobile haptic feedback when navigation starts
+        if ('vibrate' in navigator) {
+            navigator.vibrate([200, 100, 200]); // Short-long-short pattern
+        }            // Update info with route details
             const distance = (route.distance / 1000).toFixed(1);
             const duration = Math.round(route.duration / 60);
-
-            document.getElementById('nearestInfo').innerHTML =
+            
+            document.getElementById('nearestInfo').innerHTML = 
                 `🗺️ Chỉ đường đến <b>${atmName}</b><br>🛣️ ${distance} km - ${duration} phút
                 <button onclick="stopSimpleNavigation()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
                     ❌ Tắt chỉ đường
@@ -1076,7 +1225,7 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
                 distance: getDistance(userLatLng.lat, userLatLng.lng, atmLat, atmLng) * 1000,
                 duration: getDistance(userLatLng.lat, userLatLng.lng, atmLat, atmLng) * 1000 / 50 * 3.6 // rough estimate
             };
-
+            
             routeLine = L.polyline([
                 [userLatLng.lat, userLatLng.lng],
                 [atmLat, atmLng]
@@ -1088,16 +1237,16 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
                 lineCap: 'round',
                 lineJoin: 'round'
             }).addTo(map);
-
+            
             startSimpleNavigation(atmName, fallbackRoute, { lat: atmLat, lng: atmLng });
-
-            document.getElementById('nearestInfo').innerHTML =
+            
+            document.getElementById('nearestInfo').innerHTML = 
                 `🗺️ Đường thẳng đến <b>${atmName}</b>
                 <button onclick="stopSimpleNavigation()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
                     ❌ Tắt
                 </button>`;
         }
-
+        
     } catch (error) {
         console.error('Routing error:', error);
         // Fallback: draw straight line with Google Maps styling
@@ -1105,7 +1254,7 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
             distance: getDistance(userLatLng.lat, userLatLng.lng, atmLat, atmLng) * 1000,
             duration: getDistance(userLatLng.lat, userLatLng.lng, atmLat, atmLng) * 1000 / 50 * 3.6
         };
-
+        
         routeLine = L.polyline([
             [userLatLng.lat, userLatLng.lng],
             [atmLat, atmLng]
@@ -1117,10 +1266,10 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
             lineCap: 'round',
             lineJoin: 'round'
         }).addTo(map);
-
+        
         startSimpleNavigation(atmName, fallbackRoute, { lat: atmLat, lng: atmLng });
-
-        document.getElementById('nearestInfo').innerHTML =
+        
+        document.getElementById('nearestInfo').innerHTML = 
             `🗺️ Đường thẳng đến <b>${atmName}</b>
             <button onclick="stopSimpleNavigation()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
                 ❌ Tắt
@@ -1129,7 +1278,7 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
 };
 
 // Route to PGD function - Enhanced with navigation
-window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
+window.routeToPGD = async function(pgdLat, pgdLng, pgdName) {
     if (!userMarker) {
         // Lưu thông tin để chỉ đường sau khi có location
         pendingNavigation = {
@@ -1141,20 +1290,20 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
         showLocationPopup();
         return;
     }
-
+    
     const userLatLng = userMarker.getLatLng();
-
+    
     try {
         if (routeLine) map.removeLayer(routeLine);
-
+        
         const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${pgdLng},${pgdLat}?overview=full&geometries=geojson&steps=true`);
         const data = await response.json();
-
+        
         if (data.routes && data.routes.length > 0) {
             const route = data.routes[0];
             const coordinates = route.geometry.coordinates;
             const latlngs = coordinates.map(coord => [coord[1], coord[0]]);
-
+            
             routeLine = L.polyline(latlngs, {
                 color: '#47c0f6',
                 weight: 6,
@@ -1162,24 +1311,16 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
                 lineCap: 'round',
                 lineJoin: 'round'
             }).addTo(map);
-
+            
             map.fitBounds(routeLine.getBounds(), { padding: [20, 80] });
-
+            
             // Start simple navigation
             startSimpleNavigation(pgdName, route, { lat: pgdLat, lng: pgdLng });
-
-            // FORCE compass permission for navigation - silently
-            if (!deviceOrientationHeading) {
-                console.log('🧭 PGD Navigation started - requesting compass quietly');
-                setTimeout(() => {
-                    requestDeviceOrientationPermission();
-                }, 1000);
-            }
-
+            
             const distance = (route.distance / 1000).toFixed(1);
             const duration = Math.round(route.duration / 60);
-
-            document.getElementById('nearestInfo').innerHTML =
+            
+            document.getElementById('nearestInfo').innerHTML = 
                 `🗺️ Chỉ đường đến <b>${pgdName}</b><br>🛣️ ${distance} km - ${duration} phút
                 <button onclick="stopSimpleNavigation()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
                     ❌ Tắt chỉ đường
@@ -1189,7 +1330,7 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
                 distance: getDistance(userLatLng.lat, userLatLng.lng, pgdLat, pgdLng) * 1000,
                 duration: getDistance(userLatLng.lat, userLatLng.lng, pgdLat, pgdLng) * 1000 / 50 * 3.6
             };
-
+            
             routeLine = L.polyline([
                 [userLatLng.lat, userLatLng.lng],
                 [pgdLat, pgdLng]
@@ -1201,10 +1342,10 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
                 lineCap: 'round',
                 lineJoin: 'round'
             }).addTo(map);
-
+            
             startSimpleNavigation(pgdName, fallbackRoute, { lat: pgdLat, lng: pgdLng });
-
-            document.getElementById('nearestInfo').innerHTML =
+            
+            document.getElementById('nearestInfo').innerHTML = 
                 `🗺️ Đường thẳng đến <b>${pgdName}</b>
                 <button onclick="stopSimpleNavigation()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
                     ❌ Tắt
@@ -1216,7 +1357,7 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
             distance: getDistance(userLatLng.lat, userLatLng.lng, pgdLat, pgdLng) * 1000,
             duration: getDistance(userLatLng.lat, userLatLng.lng, pgdLat, pgdLng) * 1000 / 50 * 3.6
         };
-
+        
         routeLine = L.polyline([
             [userLatLng.lat, userLatLng.lng],
             [pgdLat, pgdLng]
@@ -1228,10 +1369,10 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
             lineCap: 'round',
             lineJoin: 'round'
         }).addTo(map);
-
+        
         startSimpleNavigation(pgdName, fallbackRoute, { lat: pgdLat, lng: pgdLng });
-
-        document.getElementById('nearestInfo').innerHTML =
+        
+        document.getElementById('nearestInfo').innerHTML = 
             `🗺️ Đường thẳng đến <b>${pgdName}</b>
             <button onclick="stopSimpleNavigation()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
                 ❌ Tắt
@@ -1240,7 +1381,7 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
 };
 
 // Satellite toggle functionality
-document.getElementById('satelliteBtn').onclick = function () {
+document.getElementById('satelliteBtn').onclick = function() {
     if (currentLayer === 'osm') {
         map.removeLayer(osmLayer);
         satelliteLayer.addTo(map);
@@ -1257,7 +1398,7 @@ document.getElementById('satelliteBtn').onclick = function () {
 };
 
 // Navigation control event listeners
-document.getElementById('centerUserBtn').onclick = function () {
+document.getElementById('centerUserBtn').onclick = function() {
     if (userMarker) {
         // Zoom sát vào user location
         map.setView(userMarker.getLatLng(), 19);
@@ -1271,14 +1412,17 @@ document.getElementById('centerUserBtn').onclick = function () {
 // reopenNavBtn removed - no longer needed
 
 // Initialize rotation after map is ready
-map.whenReady(function () {
-    console.log('Map ready');
+map.whenReady(function() {
+    console.log('Map ready - initializing Google Maps-style rotation');
+    initializeMapRotation();
     updateCompassNeedle();
 });
 
 // Add keyboard shortcuts
-document.addEventListener('keydown', function (e) {
-    if (e.key === 'c' || e.key === 'C') {
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'r' || e.key === 'R') {
+        resetMapRotation();
+    } else if (e.key === 'c' || e.key === 'C') {
         if (userMarker) centerOnUser();
     } else if (e.key === 'h' || e.key === 'H') {
         // Show current user heading
@@ -1317,9 +1461,9 @@ function showRotationInstructions() {
         📍 Các tính năng khác vẫn hoạt động bình thường<br>
         🧭 Bấm compass để reset về Bắc
     `;
-
+    
     document.body.appendChild(instructions);
-
+    
     setTimeout(() => {
         instructions.remove();
     }, 4000);
@@ -1368,7 +1512,7 @@ if (satelliteBtn) {
 // Advanced routing functions
 function isUserOffRoute(userLat, userLng, routeCoords, threshold = 50) {
     if (!routeCoords || routeCoords.length === 0) return false;
-
+    
     // Find closest point on route
     let minDistance = Infinity;
     for (let i = 0; i < routeCoords.length; i++) {
@@ -1378,18 +1522,18 @@ function isUserOffRoute(userLat, userLng, routeCoords, threshold = 50) {
             minDistance = distance;
         }
     }
-
+    
     console.log('Distance from route:', minDistance.toFixed(1), 'm');
     return minDistance > threshold;
 }
 
 function updateProgressiveRoute(userLat, userLng) {
     if (!routeCoordinates || routeCoordinates.length === 0) return;
-
+    
     // Find closest point on route and mark previous points as passed
     let closestIndex = 0;
     let minDistance = Infinity;
-
+    
     for (let i = 0; i < routeCoordinates.length; i++) {
         const routePoint = routeCoordinates[i];
         const distance = getDistance(userLat, userLng, routePoint[0], routePoint[1]);
@@ -1398,16 +1542,16 @@ function updateProgressiveRoute(userLat, userLng) {
             closestIndex = i;
         }
     }
-
+    
     // Update passed coordinates (user đã đi qua)
     if (closestIndex > 0) {
         const newlyPassed = routeCoordinates.slice(0, closestIndex);
         passedRouteCoordinates = [...passedRouteCoordinates, ...newlyPassed];
         routeCoordinates = routeCoordinates.slice(closestIndex);
-
+        
         // Redraw route with passed portion hidden
         updateRouteVisualization();
-
+        
         console.log('Route progress updated, passed:', passedRouteCoordinates.length, 'remaining:', routeCoordinates.length);
     }
 }
@@ -1417,7 +1561,7 @@ function updateRouteVisualization() {
     if (routeLine) {
         map.removeLayer(routeLine);
     }
-
+    
     // Only show remaining route (not passed portion)
     if (routeCoordinates && routeCoordinates.length > 0) {
         routeLine = L.polyline(routeCoordinates, {
@@ -1430,35 +1574,35 @@ function updateRouteVisualization() {
 
 async function recalculateRoute() {
     if (!userMarker || !currentDestination) return;
-
+    
     const now = Date.now();
     // Throttle route recalculation to every 10 seconds
     if (now - lastRouteUpdateTime < 10000) return;
     lastRouteUpdateTime = now;
-
+    
     console.log('Recalculating route to destination...');
-
+    
     const userLatLng = userMarker.getLatLng();
-
+    
     try {
         const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${currentDestination.lng},${currentDestination.lat}?overview=full&geometries=geojson&steps=true`);
         const data = await response.json();
-
+        
         if (data.routes && data.routes.length > 0) {
             const route = data.routes[0];
             currentRoute = route;
             routeCoordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]); // Swap lng,lat to lat,lng
             passedRouteCoordinates = []; // Reset passed coordinates
-
+            
             updateRouteVisualization();
-
+            
             console.log('Route recalculated successfully');
             return route;
         }
     } catch (error) {
         console.error('Route recalculation failed:', error);
     }
-
+    
     return null;
 }
 
@@ -1495,7 +1639,7 @@ const ORIENTATION_THROTTLE = 50; // Max 20 FPS for smooth but efficient updates
 
 function requestDeviceOrientationPermission() {
     console.log('🔐 Requesting device orientation permission...');
-
+    
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
         // iOS 13+ permission request
         console.log('📱 iOS detected, requesting permission...');
@@ -1527,27 +1671,28 @@ function startDeviceOrientationTracking() {
         // Use fast handlers for better mobile performance
         window.addEventListener('deviceorientationabsolute', handleDeviceOrientationFast, { passive: true });
         window.addEventListener('deviceorientation', handleDeviceOrientationFast, { passive: true });
-
+        
         // Enhanced motion tracking for better accuracy
         if (window.DeviceMotionEvent) {
             window.addEventListener('devicemotion', handleDeviceMotion, { passive: false });
             gyroscopeSupported = true;
         }
-
+        
         // Request high-frequency sensor access (if available)
         if ('Sensor' in window) {
             console.log('🎯 Advanced sensor API available');
             initializeAdvancedSensors();
         }
-
-        console.log('📱 Orientation tracking started');
-
+        
+        console.log('📱 Mobile-optimized orientation tracking started');
+        console.log('🔍 Testing high-accuracy sensors...');
+        
         // Test if orientation is working after 2 seconds
         setTimeout(() => {
             if (deviceOrientationHeading === null) {
-                console.log('⚠️ Using GPS heading fallback');
+                console.log('⚠️ Device orientation not working, using GPS heading fallback');
             } else {
-                console.log('✅ Device orientation active');
+                console.log('✅ Device orientation is working properly');
             }
         }, 2000);
     } else {
@@ -1558,7 +1703,7 @@ function startDeviceOrientationTracking() {
 // Fast mobile orientation handling - no smoothing for instant response
 function handleDeviceOrientation(event) {
     let heading = null;
-
+    
     if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
         // iOS - direct compass heading
         heading = event.webkitCompassHeading;
@@ -1566,10 +1711,10 @@ function handleDeviceOrientation(event) {
         // Android - direct alpha conversion
         heading = (360 - event.alpha + 360) % 360;
     }
-
+    
     if (heading !== null && !isNaN(heading)) {
         deviceOrientationHeading = heading;
-
+        
         // Instant update - no delay for mobile responsiveness
         if (userMarker) {
             requestAnimationFrame(() => {
@@ -1580,132 +1725,22 @@ function handleDeviceOrientation(event) {
     }
 }
 
-// FORCE compass permission immediately - no delays
-function forceCompassPermission() {
-    console.log('🧭 FORCING compass permission dialog immediately');
-
-    // Skip separate compass dialog since we now have combined dialog
-    // Just initialize compass tracking quietly
-    setTimeout(() => {
+// Auto-request permission when user marker is created
+function initializeCompassTracking() {
+    if (userMarker) {
+        console.log('🎯 Initializing compass tracking...');
         requestDeviceOrientationPermission();
-    }, 500);
-}
-
-// Enhanced compass permission dialog
-function showCompassPermissionDialog() {
-    // Remove any existing dialogs
-    const existing = document.querySelector('.compass-permission-dialog');
-    if (existing) existing.remove();
-
-    const dialog = document.createElement('div');
-    dialog.className = 'compass-permission-dialog';
-    dialog.style.cssText = `
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0,0,0,0.7);
-        z-index: 3000;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 20px;
-    `;
-
-    dialog.innerHTML = `
-        <div style="
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            max-width: 300px;
-            width: 90%;
-            text-align: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        ">
-            <div style="font-size: 40px; margin-bottom: 12px;">🧭</div>
-            <h3 style="margin: 0 0 12px 0; color: #003A6E; font-size: 18px;">Bật Compass</h3>
-            <p style="margin: 0 0 16px 0; color: #666; font-size: 14px;">
-                Cho phép compass để xem vệt ánh sáng chỉ hướng
-            </p>
-            <div style="display: flex; gap: 8px; justify-content: center;">
-                <button onclick="enableCompassFeatures()" style="
-                    background: #4285F4; 
-                    color: white; 
-                    border: none; 
-                    padding: 10px 20px; 
-                    border-radius: 6px; 
-                    cursor: pointer; 
-                    font-size: 14px;
-                    font-weight: bold;
-                ">
-                    Bật ngay
-                </button>
-                <button onclick="skipCompassFeatures()" style="
-                    background: #f0f0f0; 
-                    color: #666; 
-                    border: none; 
-                    padding: 10px 16px; 
-                    border-radius: 6px; 
-                    cursor: pointer;
-                    font-size: 14px;
-                ">
-                    Bỏ qua
-                </button>
-            </div>
-        </div>
-    `;
-
-    document.body.appendChild(dialog);
-}
-
-// Global functions for dialog buttons
-window.enableCompassFeatures = function () {
-    console.log('🚀 User chose to enable ALL compass features');
-
-    // Close dialog
-    const dialog = document.querySelector('.compass-permission-dialog');
-    if (dialog) dialog.remove();
-
-    // Request permissions immediately
-    requestDeviceOrientationPermission();
-
-    // Show success message
-    setTimeout(() => {
-        showCompassSuccessMessage();
-    }, 1000);
-};
-
-window.skipCompassFeatures = function () {
-    console.log('⏭️ User skipped compass features');
-
-    // Close dialog
-    const dialog = document.querySelector('.compass-permission-dialog');
-    if (dialog) dialog.remove();
-};
-
-function showCompassSuccessMessage() {
-    const success = document.createElement('div');
-    success.style.cssText = `
-        position: fixed;
-        top: 20px;
-        left: 50%;
-        transform: translateX(-50%);
-        background: #4285F4;
-        color: white;
-        padding: 8px 16px;
-        border-radius: 6px;
-        z-index: 2000;
-        font-size: 14px;
-        box-shadow: 0 2px 8px rgba(66, 133, 244, 0.3);
-    `;
-    success.textContent = '🧭 Compass đã bật';
-
-    document.body.appendChild(success);
-
-    setTimeout(() => {
-        success.remove();
-    }, 2000);
+        
+        // Show instruction for iOS users
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            setTimeout(() => {
+                if (deviceOrientationHeading === null) {
+                    console.log('💡 iOS: Bạn cần cho phép truy cập compass để ánh sáng xanh hoạt động');
+                    showCompassPermissionPrompt();
+                }
+            }, 3000);
+        }
+    }
 }
 
 function showCompassPermissionPrompt() {
@@ -1724,19 +1759,19 @@ function showCompassPermissionPrompt() {
         font-size: 14px;
     `;
     prompt.innerHTML = `
-        🧭 Bật compass?
+        🧭 Cho phép truy cập compass để ánh sáng xanh hoạt động
         <button onclick="requestDeviceOrientationPermission(); this.parentElement.remove();" 
-                style="background: white; color: #4285F4; border: none; padding: 4px 10px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 13px;">
-            Bật
+                style="background: white; color: #4285F4; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 8px; cursor: pointer;">
+            Cho phép
         </button>
         <button onclick="this.parentElement.remove();" 
-                style="background: transparent; color: white; border: 1px solid white; padding: 4px 8px; border-radius: 4px; margin-left: 4px; cursor: pointer; font-size: 13px;">
-            Không
+                style="background: transparent; color: white; border: 1px solid white; padding: 6px 12px; border-radius: 4px; margin-left: 4px; cursor: pointer;">
+            Bỏ qua
         </button>
     `;
-
+    
     document.body.appendChild(prompt);
-
+    
     // Auto remove after 10 seconds
     setTimeout(() => {
         if (prompt.parentElement) {
@@ -1754,7 +1789,7 @@ function handleDeviceMotion(event) {
             z: event.accelerationIncludingGravity.z || 0
         };
     }
-
+    
     // Use gyroscope data if available for smoother rotation
     if (event.rotationRate) {
         const rotationRate = {
@@ -1762,7 +1797,7 @@ function handleDeviceMotion(event) {
             beta: event.rotationRate.beta || 0,
             gamma: event.rotationRate.gamma || 0
         };
-
+        
         // Smooth the compass heading using gyroscope
         if (deviceOrientationHeading !== null && Math.abs(rotationRate.alpha) > 0.1) {
             console.log('🌀 Using gyroscope for smooth heading updates');
@@ -1784,7 +1819,7 @@ function initializeAdvancedSensors() {
             console.log('🧲 Magnetometer not available:', error.message);
         }
     }
-
+    
     // Access gyroscope for rotation rate
     if ('Gyroscope' in window) {
         try {
@@ -1807,7 +1842,7 @@ function optimizeForMobile() {
             console.log('⚡ Using idle time for optimizations');
         });
     }
-
+    
     // Prevent screen sleep during navigation
     if ('wakeLock' in navigator) {
         navigator.wakeLock.request('screen').then((wakeLock) => {
@@ -1816,7 +1851,7 @@ function optimizeForMobile() {
             console.log('🔋 Wake lock failed:', err.message);
         });
     }
-
+    
     // Request persistent storage for offline capability
     if ('storage' in navigator && 'persist' in navigator.storage) {
         navigator.storage.persist().then((persistent) => {
@@ -1825,22 +1860,29 @@ function optimizeForMobile() {
             }
         });
     }
-
+    
     // Battery-aware optimization
     if ('getBattery' in navigator) {
         navigator.getBattery().then((battery) => {
+            console.log(`🔋 Battery level: ${(battery.level * 100).toFixed(0)}%`);
+            
             // Reduce update frequency if battery is low
             if (battery.level < 0.2) {
-                console.log('🔋 Low battery mode');
+                console.log('🔋 Low battery - reducing GPS frequency');
+                // Could adjust GPS polling here
             }
+            
+            battery.addEventListener('levelchange', () => {
+                console.log(`🔋 Battery level changed: ${(battery.level * 100).toFixed(0)}%`);
+            });
         });
     }
-
+    
     // Network information for data optimization
     if ('connection' in navigator) {
         const connection = navigator.connection;
         console.log(`📶 Network: ${connection.effectiveType} (${connection.downlink}Mbps)`);
-
+        
         // Optimize based on connection speed
         if (connection.effectiveType === 'slow-2g' || connection.effectiveType === '2g') {
             console.log('📶 Slow connection - reducing API calls');
@@ -1870,28 +1912,30 @@ function handleDeviceOrientationFast(event) {
         return; // Throttle updates for smooth performance
     }
     lastOrientationUpdate = now;
-
+    
     let heading = null;
-
+    
     if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
         heading = event.webkitCompassHeading;
     } else if (event.alpha !== null && event.alpha !== undefined) {
         heading = (360 - event.alpha + 360) % 360;
     }
-
+    
     if (heading !== null && !isNaN(heading)) {
         deviceOrientationHeading = heading;
-        console.log(`🧭 Compass heading: ${heading.toFixed(1)}°`);
-
-        // Update user marker with compass heading
-        if (userMarker) {
-            // Try fast CSS method first, fallback to icon recreation
-            if (!updateUserDirectionFast(heading)) {
-                const newIcon = createUserLocationIcon(heading);
-                userMarker.setIcon(newIcon);
-            }
+        
+        // Try fast CSS method first, fallback to icon recreation
+        if (!updateUserDirectionFast(heading) && userMarker) {
+            const newIcon = createUserLocationIcon(heading);
+            userMarker.setIcon(newIcon);
         }
     }
 }
 
-console.log('ATM Location App initialized with custom map rotation!');
+console.log('ATM Location App initialized!');
+
+// Auto show location & compass popup when app starts
+setTimeout(() => {
+    console.log('🚀 Auto showing location & compass popup on startup');
+    showLocationPopup();
+}, 1000); // Show popup after 1 second
