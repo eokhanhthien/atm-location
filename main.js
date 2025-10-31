@@ -665,14 +665,13 @@ function showLocationPopup() {
     popup.className = 'location-popup-overlay';
     popup.innerHTML = `
         <div class="location-popup">
-            <h3>🗺️ Cần truy cập vị trí</h3>
-            <p>Để sử dụng tính năng chỉ đường, chúng tôi cần biết vị trí hiện tại của bạn.</p>
-            <p><strong>Vui lòng:</strong></p>
-            <p>1. Bấm "Cho phép" khi trình duyệt hỏi<br>
-               2. Hoặc bấm "📍 Vị trí" để bật định vị</p>
+            <h3>� Khởi động ứng dụng</h3>
+            <p><strong>Để sử dụng đầy đủ tính năng:</strong></p>
+            <p>📍 <strong>Vị trí</strong> - Chỉ đường đến ATM/PGD<br>
+            🧭 <strong>Compass</strong> - Xem hướng di chuyển</p>
             <div class="location-popup-buttons">
-                <button class="btn-primary" onclick="enableLocationAndClose()">📍 Bật vị trí ngay</button>
-                <button class="btn-secondary" onclick="closeLocationPopup()">Để sau</button>
+                <button class="btn-primary" onclick="enableLocationAndClose()">� Bật tất cả</button>
+                <button class="btn-secondary" onclick="closeLocationPopup()">Bỏ qua</button>
             </div>
         </div>
     `;
@@ -698,7 +697,17 @@ window.closeLocationPopup = function() {
 // Function to enable location and close popup
 window.enableLocationAndClose = function() {
     closeLocationPopup();
+    
+    console.log('🚀 User chose to enable ALL features - Location + Compass');
+    
+    // Enable location first
     document.getElementById('locateBtn').click();
+    
+    // Enable compass immediately (don't wait for location)
+    console.log('🧭 Auto-enabling compass...');
+    setTimeout(() => {
+        requestDeviceOrientationPermission();
+    }, 500);
 };
 
 // Execute pending navigation after location is obtained
@@ -1432,7 +1441,7 @@ document.addEventListener('keydown', function(e) {
         console.log('🔍 Orientation Debug:');
         console.log('- Device heading:', deviceOrientationHeading);
         console.log('- User heading:', getCurrentUserHeading());
-        requestDeviceOrientationPermission();
+        // Compass permission now handled in main popup only
     } else if (e.key === 'Escape') {
         if (navigationActive) stopSimpleNavigation();
     }
@@ -1728,18 +1737,8 @@ function handleDeviceOrientation(event) {
 // Auto-request permission when user marker is created
 function initializeCompassTracking() {
     if (userMarker) {
-        console.log('🎯 Initializing compass tracking...');
-        requestDeviceOrientationPermission();
-        
-        // Show instruction for iOS users
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            setTimeout(() => {
-                if (deviceOrientationHeading === null) {
-                    console.log('💡 iOS: Bạn cần cho phép truy cập compass để ánh sáng xanh hoạt động');
-                    showCompassPermissionPrompt();
-                }
-            }, 3000);
-        }
+        console.log('🎯 Compass tracking ready - permission handled by main popup');
+        // Compass permission now handled in main startup popup only
     }
 }
 
