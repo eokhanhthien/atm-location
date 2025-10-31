@@ -27,6 +27,7 @@ let navigationActive = false;
 let followMode = false;
 let watchPositionId = null;
 let currentBearing = 0;
+let lastPosition = null; // Track previous position for heading calculation
 let defaultView = { lat: 9.1766, lng: 105.1524, zoom: 16 };
 
 // Rotation variables
@@ -278,8 +279,24 @@ function stopLocationTracking() {
 function updateUserPosition(position) {
     const lat = position.coords.latitude;
     const lng = position.coords.longitude;
-    const heading = position.coords.heading;
+    let heading = position.coords.heading;
     const accuracy = position.coords.accuracy;
+    
+    // Calculate heading from movement if GPS heading not available
+    if ((heading === null || heading === undefined) && lastPosition) {
+        const deltaLat = lat - lastPosition.lat;
+        const deltaLng = lng - lastPosition.lng;
+        
+        // Only calculate if there's significant movement (>5 meters)
+        const distance = Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng) * 111000; // rough meters
+        if (distance > 5) {
+            heading = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 90 + 360) % 360;
+            console.log('Calculated heading from movement:', heading.toFixed(1), '°, distance:', distance.toFixed(1), 'm');
+        }
+    }
+    
+    // Store current position for next calculation
+    lastPosition = { lat, lng };
     
     if (userMarker) {
         // Update position
@@ -287,15 +304,18 @@ function updateUserPosition(position) {
         
         // Update direction arrow if heading is available
         if (heading !== null && heading !== undefined) {
+            console.log('Updating user direction arrow to:', heading.toFixed(1), '°');
             const newIcon = createUserLocationIcon(heading);
             userMarker.setIcon(newIcon);
+        } else {
+            console.log('No heading data available');
         }
         
-        // Update accuracy circle
+        // Update accuracy circle - Skip during navigation
         if (userAccuracyCircle) {
             map.removeLayer(userAccuracyCircle);
         }
-        if (accuracy && accuracy < 100) {
+        if (accuracy && accuracy < 100 && !navigationActive) {
             userAccuracyCircle = L.circle([lat, lng], {
                 radius: accuracy,
                 color: '#4285F4',
@@ -674,6 +694,9 @@ function startSimpleNavigation(destination, route) {
         map.setView(userMarker.getLatLng(), 19); // Zoom level 19 - rất sát
     }
     
+    // Disable topbar buttons during navigation
+    disableTopbarButtons();
+    
     // Enable auto follow mode
     followMode = true;
     
@@ -789,6 +812,9 @@ window.stopSimpleNavigation = function() {
     
     // Clear info
     document.getElementById('nearestInfo').innerHTML = '';
+    
+    // Re-enable topbar buttons
+    enableTopbarButtons();
 };
 
 // Handle location - back to original simple version
@@ -935,6 +961,11 @@ function getDistance(lat1, lng1, lat2, lng2) {
 
 // Show all ATMs and PGDs
 document.getElementById('showAllBtn').onclick = function() {
+    // Stop navigation if active
+    if (navigationActive) {
+        stopSimpleNavigation();
+    }
+    
     clearAllMarkers();
     addATMMarkers();
     addPGDMarkers();
@@ -951,6 +982,11 @@ document.getElementById('showAllBtn').onclick = function() {
 
 // Show only ATMs
 document.getElementById('showATMBtn').onclick = function() {
+    // Stop navigation if active
+    if (navigationActive) {
+        stopSimpleNavigation();
+    }
+    
     clearAllMarkers();
     addATMMarkers();
     
@@ -970,6 +1006,11 @@ document.getElementById('showATMBtn').onclick = function() {
 
 // Show only PGDs
 document.getElementById('showPGDBtn').onclick = function() {
+    // Stop navigation if active
+    if (navigationActive) {
+        stopSimpleNavigation();
+    }
+    
     clearAllMarkers();
     addPGDMarkers();
     
@@ -1356,6 +1397,31 @@ function showRotationInstructions() {
 //         localStorage.setItem('rotation-instructions-shown', 'true');
 //     }
 // }, 2000);
+
+// Disable/Enable topbar buttons during navigation
+function disableTopbarButtons() {
+    const buttons = ['showAllBtn', 'showATMBtn', 'showPGDBtn', 'locateBtn'];
+    buttons.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.disabled = true;
+            btn.style.opacity = '0.5';
+            btn.style.cursor = 'not-allowed';
+        }
+    });
+}
+
+function enableTopbarButtons() {
+    const buttons = ['showAllBtn', 'showATMBtn', 'showPGDBtn', 'locateBtn'];
+    buttons.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.cursor = 'pointer';
+        }
+    });
+}
 
 // Set satellite button as active by default
 document.getElementById('satelliteBtn').classList.add('active');

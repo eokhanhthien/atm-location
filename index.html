@@ -107,6 +107,57 @@
             width: 100%;
         }
 
+        /* User Direction Arrow Styles */
+        .custom-user-icon {
+            background: transparent !important;
+            border: none !important;
+        }
+
+        .user-location-container {
+            position: relative;
+            width: 32px;
+            height: 32px;
+            transform-origin: center center;
+        }
+
+        .user-location-dot {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 16px;
+            height: 16px;
+            background: #4285F4;
+            border: 3px solid white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            z-index: 2;
+        }
+
+        .user-direction-arrow {
+            position: absolute;
+            top: 2px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1;
+        }
+
+        .arrow-body {
+            width: 2px;
+            height: 12px;
+            background: #1a73e8;
+            margin: 0 auto;
+        }
+
+        .arrow-head {
+            width: 0;
+            height: 0;
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
+            border-bottom: 6px solid #1a73e8;
+            margin: 0 auto;
+        }
+
         /* Move zoom controls to bottom-left */
         .leaflet-top.leaflet-left {
             top: auto !important;
