@@ -753,8 +753,8 @@ function startSimpleNavigation(destination, route, destinationCoords = null) {
     // Enable auto follow mode
     followMode = true;
 
-    // Set up auto return to user when map is dragged
-    setupAutoReturnToUser();
+    // Auto return to user disabled
+    // setupAutoReturnToUser();
 }
 
 function getStepIcon(maneuverType) {
@@ -795,24 +795,24 @@ function setupAutoReturnToUser() {
             // Update last interaction time
             lastInteractionTime = Date.now();
 
-            // Set new timer for 3 seconds after interaction stops
+            // Set new timer for 10 seconds after interaction stops
             autoReturnTimer = setTimeout(() => {
                 if (navigationActive && userMarker) {
-                    // Only return if no interaction for 3 seconds
+                    // Only return if no interaction for 10 seconds
                     const timeSinceLastInteraction = Date.now() - lastInteractionTime;
-                    if (timeSinceLastInteraction >= 3000) {
+                    if (timeSinceLastInteraction >= 10000) {
                         // Show brief indicator before returning
                         showAutoReturnIndicator();
 
                         setTimeout(() => {
                             if (navigationActive && userMarker) {
                                 map.setView(userMarker.getLatLng(), 19);
-                                console.log('Auto returned to user location after 3s of no interaction');
+                                console.log('Auto returned to user location after 10s of no interaction');
                             }
                         }, 500);
                     }
                 }
-            }, 3000);
+            }, 10000);
         }
     }
 
@@ -1011,9 +1011,7 @@ function clearAllMarkers() {
     document.getElementById('nearestInfo').innerHTML = '';
 }
 
-// Initialize both ATM and PGD markers
-addATMMarkers();
-addPGDMarkers();
+// Initialize markers after map is ready (moved to map.whenReady)
 
 // Haversine formula to calculate distance (km) - CORRECTED
 function getDistance(lat1, lng1, lat2, lng2) {
@@ -1401,11 +1399,21 @@ document.getElementById('centerUserBtn').onclick = function () {
 
 // reopenNavBtn removed - no longer needed
 
-// Initialize rotation after map is ready
+// Initialize map after ready
 map.whenReady(function () {
-    console.log('Map ready - initializing Google Maps-style rotation');
-    initializeMapRotation();
+    console.log('Map ready and initialized');
+    
+    // Initialize markers after map is ready
+    addATMMarkers();
+    addPGDMarkers();
+    
     updateCompassNeedle();
+    
+    // Auto show location & compass popup after map is ready
+    setTimeout(() => {
+        console.log('🚀 Auto showing location & compass popup on startup');
+        showLocationPopup();
+    }, 1000); // Show popup 1 second after map is ready
 });
 
 // Add keyboard shortcuts
@@ -1914,8 +1922,4 @@ function handleDeviceOrientationFast(event) {
 
 console.log('ATM Location App initialized!');
 
-// Auto show location & compass popup when app starts
-setTimeout(() => {
-    console.log('🚀 Auto showing location & compass popup on startup');
-    showLocationPopup();
-}, 1000); // Show popup after 1 second
+// Auto popup moved to map.whenReady
