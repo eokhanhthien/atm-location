@@ -26,7 +26,6 @@ const map = L.map('map', {
 let navigationActive = false;
 let followMode = false;
 let watchPositionId = null;
-let currentBearing = 0;
 let currentUserHeading = 0; // Store current user heading
 let lastPosition = null; // Track previous position for heading calculation
 let defaultView = { lat: 9.1766, lng: 105.1524, zoom: 16 };
@@ -37,12 +36,6 @@ let routeCoordinates = []; // Full route coordinates
 let passedRouteCoordinates = []; // Coordinates already passed
 let currentDestination = null; // Current navigation destination
 let lastRouteUpdateTime = 0; // Throttle route updates
-
-// Rotation variables
-let isRotating = false;
-let mapPane = null;
-let startRotationAngle = 0;
-let rotationCenter = null;
 
 // User tracking variables
 let userAccuracyCircle = null;
@@ -60,186 +53,9 @@ satelliteLayer.addTo(map);
 let currentLayer = 'satellite';
 let userMarker, nearestATM, nearestPGD, routeLine, atmMarkers = [], pgdMarkers = [];
 
-// Mobile touch rotation like Google Maps - FULLY ENABLED
-function initializeMapRotation() {
-    console.log('🔄 FULLY ENABLING touch rotation for complete Google Maps experience');
+// Map rotation disabled
 
-    const mapContainer = map.getContainer();
-
-    console.log('✅ Mobile touch rotation ACTIVE');
-
-    // Touch rotation variables
-    let isTouchRotating = false;
-    let initialTouchAngle = 0;
-    let initialTouchDistance = 0;
-    let startBearing = 0;
-
-    // Touch rotation (2-finger) - FULLY ENABLED
-    mapContainer.addEventListener('touchstart', (e) => {
-        if (e.touches.length === 2) {
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-
-            initialTouchDistance = getTouchDistance(touch1, touch2);
-            initialTouchAngle = getTouchAngle(touch1, touch2);
-            isTouchRotating = true;
-            startBearing = currentBearing;
-
-            // Disable default Leaflet touch handling temporarily
-            map.touchZoom.disable();
-            map.dragging.disable();
-
-            showRotationIndicator();
-            console.log('🔄 2-finger rotation started');
-            e.preventDefault();
-        }
-    }, { passive: false });
-
-    mapContainer.addEventListener('touchmove', (e) => {
-        if (e.touches.length === 2 && isTouchRotating) {
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-
-            const currentDistance = getTouchDistance(touch1, touch2);
-            const currentAngle = getTouchAngle(touch1, touch2);
-
-            // Calculate distance change for zoom vs rotate detection
-            const distanceChange = Math.abs(currentDistance - initialTouchDistance);
-
-            if (distanceChange < 30) {
-                // If distance is stable, this is rotation
-                let angleDiff = currentAngle - initialTouchAngle;
-
-                // Handle angle wrapping
-                if (angleDiff > 180) angleDiff -= 360;
-                if (angleDiff < -180) angleDiff += 360;
-
-                // Only rotate if significant angle change
-                if (Math.abs(angleDiff) > 5) {
-                    rotateMapTouch(startBearing + angleDiff);
-                }
-            }
-
-            e.preventDefault();
-        }
-    }, { passive: false });
-
-    mapContainer.addEventListener('touchend', (e) => {
-        if (isTouchRotating) {
-            isTouchRotating = false;
-            hideRotationIndicator();
-
-            // Re-enable Leaflet controls
-            setTimeout(() => {
-                map.touchZoom.enable();
-                map.dragging.enable();
-            }, 100);
-
-            console.log('🔄 2-finger rotation ended');
-        }
-    });
-}
-
-// Rotate map using CSS transform - FULLY ENABLED
-function rotateMapTouch(angle) {
-    currentBearing = ((angle % 360) + 360) % 360;
-
-    console.log('🔄 Rotating map to:', currentBearing.toFixed(1) + '°');
-
-    // Use CSS transform for smooth rotation (Leaflet bearing API not available)
-    const mapPane = map.getPanes().mapPane;
-    if (mapPane) {
-        mapPane.style.transform = `rotate(${currentBearing}deg)`;
-        mapPane.style.transformOrigin = 'center center';
-    }
-
-    // Also rotate tiles pane for complete rotation
-    const tilePane = map.getPanes().tilePane;
-    if (tilePane) {
-        tilePane.style.transform = `rotate(${currentBearing}deg)`;
-        tilePane.style.transformOrigin = 'center center';
-    }
-
-    updateCompassNeedle();
-    updateRotationIndicator();
-}
-
-function getTouchDistance(touch1, touch2) {
-    const dx = touch1.clientX - touch2.clientX;
-    const dy = touch1.clientY - touch2.clientY;
-    return Math.sqrt(dx * dx + dy * dy);
-}
-
-function getTouchAngle(touch1, touch2) {
-    const dx = touch2.clientX - touch1.clientX;
-    const dy = touch2.clientY - touch1.clientY;
-    return Math.atan2(dy, dx) * (180 / Math.PI);
-}
-
-function showRotationIndicator() {
-    // Create indicator if not exists
-    let indicator = document.getElementById('rotationIndicator');
-    if (!indicator) {
-        indicator = document.createElement('div');
-        indicator.id = 'rotationIndicator';
-        indicator.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: rgba(0,0,0,0.7);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 6px;
-            font-size: 14px;
-            z-index: 1000;
-            display: none;
-        `;
-        document.body.appendChild(indicator);
-    }
-
-    indicator.style.display = 'block';
-    updateRotationIndicator();
-}
-
-function hideRotationIndicator() {
-    const indicator = document.getElementById('rotationIndicator');
-    if (indicator) {
-        indicator.style.display = 'none';
-    }
-}
-
-function showAutoReturnIndicator() {
-    // Tắt indicator - không hiển thị nữa
-    return;
-}
-
-function updateRotationIndicator() {
-    const indicator = document.getElementById('rotationIndicator');
-    if (indicator) {
-        const bearing = Math.round(currentBearing);
-        indicator.textContent = `🧭 ${bearing}°`;
-    }
-}
-
-// Map control functions
-function resetMapRotation() {
-    console.log('🧭 Resetting map rotation to North');
-    currentBearing = 0;
-
-    // Reset CSS transforms
-    const mapPane = map.getPanes().mapPane;
-    if (mapPane) {
-        mapPane.style.transform = 'rotate(0deg)';
-    }
-
-    const tilePane = map.getPanes().tilePane;
-    if (tilePane) {
-        tilePane.style.transform = 'rotate(0deg)';
-    }
-
-    updateCompassNeedle();
-    updateRotationIndicator();
-}
+// Rotation functions removed
 
 function resetMapView() {
     map.setView([defaultView.lat, defaultView.lng], defaultView.zoom);
@@ -255,7 +71,7 @@ function centerOnUser() {
 function updateCompassNeedle() {
     const needle = document.querySelector('.compass-needle');
     if (needle) {
-        needle.style.transform = `rotate(${-currentBearing}deg)`;
+        needle.style.transform = `rotate(0deg)`;
     }
 }
 
@@ -1456,16 +1272,13 @@ document.getElementById('centerUserBtn').onclick = function () {
 
 // Initialize rotation after map is ready
 map.whenReady(function () {
-    console.log('Map ready - initializing Google Maps-style rotation');
-    initializeMapRotation();
+    console.log('Map ready');
     updateCompassNeedle();
 });
 
 // Add keyboard shortcuts
 document.addEventListener('keydown', function (e) {
-    if (e.key === 'r' || e.key === 'R') {
-        resetMapRotation();
-    } else if (e.key === 'c' || e.key === 'C') {
+    if (e.key === 'c' || e.key === 'C') {
         if (userMarker) centerOnUser();
     } else if (e.key === 'h' || e.key === 'H') {
         // Show current user heading
