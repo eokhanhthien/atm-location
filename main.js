@@ -53,6 +53,10 @@ let userMarker, nearestATM, nearestPGD, routeLine, atmMarkers = [], pgdMarkers =
 
 // Mobile-only touch rotation like Google Maps
 function initializeMapRotation() {
+    // DISABLED: Touch rotation functionality removed due to compatibility issues
+    console.log('Map rotation disabled');
+    return;
+    
     const container = map.getContainer();
     
     console.log('Initializing mobile touch rotation only');
@@ -128,6 +132,10 @@ function initializeMapRotation() {
 
 // Rotate map using proper Leaflet bearing API
 function rotateMapTouch(angle) {
+    // DISABLED: Rotation functionality removed
+    console.log('Rotation disabled, angle requested:', angle);
+    return;
+    
     currentBearing = ((angle % 360) + 360) % 360;
     
     // Use Leaflet bearing API for real map rotation
@@ -190,7 +198,8 @@ function updateRotationIndicator() {
 
 // Map control functions
 function resetMapRotation() {
-    rotateMapTouch(0);
+    // DISABLED: Rotation functionality removed
+    console.log('Rotation reset disabled');
 }
 
 function resetMapView() {
@@ -301,10 +310,10 @@ function updateUserPosition(position) {
             // Zoom sát và follow user trong navigation
             map.setView([lat, lng], 19);
             
-            // Rotate map theo hướng di chuyển
-            if (heading !== null && heading !== undefined) {
-                rotateMapTouch(heading);
-            }
+            // Rotate map theo hướng di chuyển - DISABLED
+            // if (heading !== null && heading !== undefined) {
+            //     rotateMapTouch(heading);
+            // }
         } else if (followMode) {
             // Follow bình thường khi không navigation
             map.panTo([lat, lng]);
@@ -1340,13 +1349,13 @@ function showRotationInstructions() {
     }, 4000);
 }
 
-// Show instructions on first load
-setTimeout(() => {
-    if (localStorage.getItem('rotation-instructions-shown') !== 'true') {
-        showRotationInstructions();
-        localStorage.setItem('rotation-instructions-shown', 'true');
-    }
-}, 2000);
+// Show instructions on first load - DISABLED
+// setTimeout(() => {
+//     if (localStorage.getItem('rotation-instructions-shown') !== 'true') {
+//         showRotationInstructions();
+//         localStorage.setItem('rotation-instructions-shown', 'true');
+//     }
+// }, 2000);
 
 // Set satellite button as active by default
 document.getElementById('satelliteBtn').classList.add('active');
