@@ -709,12 +709,23 @@ window.closeLocationPopup = function () {
 // Function to enable both location and compass
 window.enableLocationAndCompass = function () {
     closeLocationPopup();
+    
+    console.log('🚀 Enabling both location and compass...');
+    
     // First enable location
     document.getElementById('locateBtn').click();
-    // Then request compass permission after a short delay
+    
+    // Request compass permission immediately (don't wait)
+    console.log('📱 Requesting compass permission...');
+    requestDeviceOrientationPermission();
+    
+    // Also force compass tracking after location is ready
     setTimeout(() => {
-        requestDeviceOrientationPermission();
-    }, 1000);
+        console.log('🧭 Force starting compass tracking...');
+        if (!deviceOrientationHeading) {
+            startDeviceOrientationTracking();
+        }
+    }, 2000);
 };
 
 // Execute pending navigation after location is obtained
@@ -2057,11 +2068,15 @@ function handleDeviceOrientationFast(event) {
 
     if (heading !== null && !isNaN(heading)) {
         deviceOrientationHeading = heading;
+        console.log(`🧭 Compass heading: ${heading.toFixed(1)}°`);
 
-        // Try fast CSS method first, fallback to icon recreation
-        if (!updateUserDirectionFast(heading) && userMarker) {
-            const newIcon = createUserLocationIcon(heading);
-            userMarker.setIcon(newIcon);
+        // Update user marker with compass heading
+        if (userMarker) {
+            // Try fast CSS method first, fallback to icon recreation
+            if (!updateUserDirectionFast(heading)) {
+                const newIcon = createUserLocationIcon(heading);
+                userMarker.setIcon(newIcon);
+            }
         }
     }
 }
