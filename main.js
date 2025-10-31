@@ -724,15 +724,19 @@ function startSimpleNavigation(destination, route, destinationCoords = null) {
 
     console.log('Navigation started with', routeCoordinates.length, 'route points');
 
-    // Show simple info in nearestInfo instead of big panel
+    // Simple navigation info
     const distance = (route.distance / 1000).toFixed(1);
     const duration = Math.round(route.duration / 60);
 
     document.getElementById('nearestInfo').innerHTML =
-        `🎯 Đang đi đến <b>${destination}</b><br>📏 ${distance} km - ${duration} phút
-        <button onclick="stopSimpleNavigation()" style="background: #dc3545; color: white; border: none; padding: 4px 8px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 0.8em;">
-            ❌ Dừng
-        </button>`;
+        `<div style="background: #4285F4; color: white; padding: 10px; border-radius: 6px; margin: 4px;">
+            <div style="font-size: 14px; font-weight: bold;">
+                🎯 ${destination} - ${distance} km (${duration} phút)
+            </div>
+            <button onclick="stopSimpleNavigation()" style="background: rgba(255,255,255,0.2); color: white; border: 1px solid rgba(255,255,255,0.3); padding: 4px 8px; border-radius: 12px; cursor: pointer; font-size: 11px; margin-top: 4px;">
+                ✕ Dừng
+            </button>
+        </div>`;
 
     // Show navigation controls
     document.getElementById('navigationControls').style.display = 'flex';
@@ -742,20 +746,61 @@ function startSimpleNavigation(destination, route, destinationCoords = null) {
         startLocationTracking();
     }
 
-    // Auto zoom sát vào user location
-    if (userMarker) {
-        map.setView(userMarker.getLatLng(), 19); // Zoom level 19 - rất sát
-    }
-
-    // Disable topbar buttons during navigation
-    disableTopbarButtons();
-
     // Enable auto follow mode
     followMode = true;
-
-    // Auto return to user disabled
-    // setupAutoReturnToUser();
 }
+
+function getStepIcon(maneuverType) {
+    if (!navigationActive || !userMarker || !currentDestination) return;
+    
+    const userPos = userMarker.getLatLng();
+    const destDistance = getDistance(userPos.lat, userPos.lng, currentDestination.lat, currentDestination.lng);
+    const distanceKm = destDistance.toFixed(1);
+    
+    // Calculate estimated time based on average speed (assume 30km/h in city)
+    const estimatedMinutes = Math.round(destDistance * 2); // roughly 30km/h
+    const etaTime = new Date(Date.now() + estimatedMinutes * 60 * 1000);
+    const etaStr = etaTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+    
+    // Update progress display
+    const progressEl = document.getElementById('navigationProgress');
+    if (progressEl) {
+        if (destDistance < 0.05) { // Less than 50m - Arrived!
+            progressEl.innerHTML = '🎉 <strong>Bạn đã đến nơi!</strong> (< 50m)';
+            
+            // Auto-complete navigation when arrived
+            if (!window.arrivalNotified) {
+                window.arrivalNotified = true;
+                
+                // Voice announcement
+                if (voiceEnabled) {
+                    speakInstruction('Bạn đã đến nơi. Chúc bạn một ngày tốt lành!');
+                }
+                
+                // Auto stop navigation after 5 seconds
+                setTimeout(() => {
+                    if (navigationActive) {
+                        window.stopSimpleNavigation();
+                    }
+                }, 5000);
+            }
+        } else if (destDistance < 0.1) { // Less than 100m
+            progressEl.innerHTML = `🎯 <strong>Gần đến rồi!</strong> Còn ${Math.round(destDistance * 1000)}m`;
+            window.arrivalNotified = false; // Reset for next time
+        } else {
+            progressEl.innerHTML = `🚗 Còn ${distanceKm} km • ETA ${etaStr}`;
+            window.arrivalNotified = false; // Reset for next time
+        }
+    }
+    
+    // Continue updating every 5 seconds
+    if (navigationActive) {
+        setTimeout(updateNavigationProgress, 5000);
+    }
+}
+
+// Enhanced navigation guidance with turn instructions
+
 
 function getStepIcon(maneuverType) {
     const icons = {
@@ -875,7 +920,8 @@ window.stopSimpleNavigation = function () {
     lastRouteUpdateTime = 0;
 
     // Clear info
-    document.getElementById('nearestInfo').innerHTML = '';
+    document.getElementById('nearestInfo').innerHTML = 
+        '<div style="text-align: center; padding: 8px; color: #666;">Chọn điểm trên bản đồ để chỉ đường</div>';
 
     // Re-enable topbar buttons
     enableTopbarButtons();
@@ -1169,12 +1215,28 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
         // Remove existing route
         if (routeLine) map.removeLayer(routeLine);
 
-        // Get detailed route from OSRM with steps
-        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${atmLng},${atmLat}?overview=full&geometries=geojson&steps=true`);
+        // Get shortest route from OSRM with optimization for shortest distance
+        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${atmLng},${atmLat}?overview=full&geometries=geojson&steps=true&alternatives=3&continue_straight=false`);
         const data = await response.json();
 
         if (data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
+            // Find the shortest route among alternatives
+            let shortestRoute = data.routes[0];
+            for (let i = 1; i < data.routes.length; i++) {
+                if (data.routes[i].distance < shortestRoute.distance) {
+                    shortestRoute = data.routes[i];
+                }
+            }
+            // Log all route options for comparison
+            if (data.routes.length > 1) {
+                console.log('� Route alternatives comparison:');
+                data.routes.forEach((r, i) => {
+                    const marker = i === data.routes.indexOf(shortestRoute) ? '✅' : '❌';
+                    console.log(`  ${marker} Route ${i+1}: ${(r.distance/1000).toFixed(1)}km, ${Math.round(r.duration/60)}min`);
+                });
+            }
+            
+            const route = shortestRoute;
             const coordinates = route.geometry.coordinates;
 
             // Convert coordinates to Leaflet format
@@ -1284,11 +1346,20 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
     try {
         if (routeLine) map.removeLayer(routeLine);
 
-        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${pgdLng},${pgdLat}?overview=full&geometries=geojson&steps=true`);
+        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${pgdLng},${pgdLat}?overview=full&geometries=geojson&steps=true&alternatives=3&continue_straight=false`);
         const data = await response.json();
 
         if (data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
+            // Find the shortest route among alternatives
+            let shortestRoute = data.routes[0];
+            for (let i = 1; i < data.routes.length; i++) {
+                if (data.routes[i].distance < shortestRoute.distance) {
+                    shortestRoute = data.routes[i];
+                }
+            }
+            console.log(`🛣️ Found ${data.routes.length} route(s) to PGD, selected shortest: ${(shortestRoute.distance/1000).toFixed(1)}km`);
+            
+            const route = shortestRoute;
             const coordinates = route.geometry.coordinates;
             const latlngs = coordinates.map(coord => [coord[1], coord[0]]);
 
@@ -1583,11 +1654,20 @@ async function recalculateRoute() {
     const userLatLng = userMarker.getLatLng();
 
     try {
-        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${currentDestination.lng},${currentDestination.lat}?overview=full&geometries=geojson&steps=true`);
+        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${currentDestination.lng},${currentDestination.lat}?overview=full&geometries=geojson&steps=true&alternatives=3&continue_straight=false`);
         const data = await response.json();
 
         if (data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
+            // Find the shortest route among alternatives for recalculation
+            let shortestRoute = data.routes[0];
+            for (let i = 1; i < data.routes.length; i++) {
+                if (data.routes[i].distance < shortestRoute.distance) {
+                    shortestRoute = data.routes[i];
+                }
+            }
+            console.log(`🔄 Recalculated: Found ${data.routes.length} alternative(s), selected shortest: ${(shortestRoute.distance/1000).toFixed(1)}km`);
+            
+            const route = shortestRoute;
             currentRoute = route;
             routeCoordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]); // Swap lng,lat to lat,lng
             passedRouteCoordinates = []; // Reset passed coordinates
