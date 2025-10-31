@@ -27,8 +27,16 @@ let navigationActive = false;
 let followMode = false;
 let watchPositionId = null;
 let currentBearing = 0;
+let currentUserHeading = 0; // Store current user heading
 let lastPosition = null; // Track previous position for heading calculation
 let defaultView = { lat: 9.1766, lng: 105.1524, zoom: 16 };
+
+// Advanced routing variables
+let currentRoute = null; // Store current route data
+let routeCoordinates = []; // Full route coordinates
+let passedRouteCoordinates = []; // Coordinates already passed
+let currentDestination = null; // Current navigation destination
+let lastRouteUpdateTime = 0; // Throttle route updates
 
 // Rotation variables
 let isRotating = false;
@@ -174,6 +182,8 @@ function showRotationIndicator() {
     if (indicator) {
         indicator.classList.add('active');
         updateRotationIndicator();
+    } else {
+        console.log('Rotation indicator disabled');
     }
 }
 
@@ -225,30 +235,35 @@ function toggleFollowMode() {
     followMode = !followMode;
     const btn = document.getElementById('followBtn');
     
-    if (followMode) {
-        btn.innerHTML = '🔒 Đang theo';
-        btn.classList.add('active');
-        
-        // Zoom sát vào user khi bật follow
-        if (userMarker) {
-            map.setView(userMarker.getLatLng(), 19);
-        }
-        
-        if (!watchPositionId) {
-            startLocationTracking();
+    if (btn) {
+        if (followMode) {
+            btn.innerHTML = '🔒 Đang theo';
+            btn.classList.add('active');
+            
+            // Zoom sát vào user khi bật follow
+            if (userMarker) {
+                map.setView(userMarker.getLatLng(), 19);
+            }
+            
+            if (!watchPositionId) {
+                startLocationTracking();
+            }
+        } else {
+            btn.innerHTML = '🎯 Theo dõi';
+            btn.classList.remove('active');
         }
     } else {
-        btn.innerHTML = '🎯 Theo dõi';
-        btn.classList.remove('active');
+        console.log('Follow button not found - feature disabled');
     }
 }
 
 function startLocationTracking() {
     if (navigator.geolocation && !watchPositionId) {
+        // Mobile-optimized GPS settings for maximum accuracy
         const options = {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 2000  // Shorter for better heading updates
+            enableHighAccuracy: true,    // Sử dụng GPS thay vì WiFi/Cell tower
+            timeout: 8000,               // Shorter timeout cho mobile
+            maximumAge: 500              // Rất ngắn cho real-time updates
         };
         
         watchPositionId = navigator.geolocation.watchPosition(
@@ -295,20 +310,45 @@ function updateUserPosition(position) {
         }
     }
     
-    // Store current position for next calculation
+    // Store current position and heading for next calculation
     lastPosition = { lat, lng };
+    if (heading !== null && heading !== undefined) {
+        currentUserHeading = heading;
+    }
     
     if (userMarker) {
         // Update position
         userMarker.setLatLng([lat, lng]);
         
-        // Update direction arrow if heading is available
-        if (heading !== null && heading !== undefined) {
-            console.log('Updating user direction arrow to:', heading.toFixed(1), '°');
-            const newIcon = createUserLocationIcon(heading);
+        // Prioritize device orientation over GPS heading
+        let finalHeading = null;
+        
+        // 1. Try device compass first (real-time orientation)
+        if (deviceOrientationHeading !== null) {
+            finalHeading = deviceOrientationHeading;
+            console.log(`🧭 Device compass: ${getHeadingDirection(finalHeading)} (${finalHeading.toFixed(1)}°)`);
+        }
+        // 2. Fallback to GPS heading (movement direction)
+        else if (heading !== null && heading !== undefined && !isNaN(heading)) {
+            finalHeading = heading;
+            console.log(`📍 GPS heading: ${getHeadingDirection(finalHeading)} (${finalHeading.toFixed(1)}°)`);
+        }
+        // 3. Last resort: Calculate from movement
+        else if (lastPosition) {
+            const deltaLat = lat - lastPosition.lat;
+            const deltaLng = lng - lastPosition.lng;
+            const distance = Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng) * 111000;
+            
+            if (distance > 3) {
+                finalHeading = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 90 + 360) % 360;
+                console.log(`🚶 Movement heading: ${getHeadingDirection(finalHeading)} (${finalHeading.toFixed(1)}°)`);
+            }
+        }
+        
+        // Update icon if we have a valid heading
+        if (finalHeading !== null) {
+            const newIcon = createUserLocationIcon(finalHeading);
             userMarker.setIcon(newIcon);
-        } else {
-            console.log('No heading data available');
         }
         
         // Update accuracy circle - Skip during navigation
@@ -329,6 +369,18 @@ function updateUserPosition(position) {
         if (navigationActive) {
             // Zoom sát và follow user trong navigation
             map.setView([lat, lng], 19);
+            
+            // Smart routing: Update route progress and check for deviations
+            if (routeCoordinates && routeCoordinates.length > 0) {
+                // Update progressive route (hide passed portions)
+                updateProgressiveRoute(lat, lng);
+                
+                // Check if user is off route
+                if (isUserOffRoute(lat, lng, routeCoordinates, 75)) {
+                    console.log('User is off route, recalculating...');
+                    recalculateRoute();
+                }
+            }
             
             // Rotate map theo hướng di chuyển - DISABLED
             // if (heading !== null && heading !== undefined) {
@@ -363,14 +415,12 @@ const pgdIcon = L.divIcon({
     popupAnchor: [0, -40]
 });
 
-// Create user location icon with direction arrow (Google Maps style)
+// Create user location icon with simple mobile direction indicator
 function createUserLocationIcon(heading = 0) {
     return L.divIcon({
         html: `<div class="user-location-container" style="transform: rotate(${heading}deg)">
-            <div class="user-direction-arrow">
-                <div class="arrow-body"></div>
-                <div class="arrow-head"></div>
-            </div>
+            <div class="user-direction-indicator"></div>
+            <div class="user-pulse-ring"></div>
             <div class="user-location-dot"></div>
         </div>`,
         className: 'custom-user-icon',
@@ -668,8 +718,21 @@ function executePendingNavigation() {
 }
 
 // Simple navigation - just follow user closely
-function startSimpleNavigation(destination, route) {
+function startSimpleNavigation(destination, route, destinationCoords = null) {
     navigationActive = true;
+    
+    // Store route data for smart routing
+    currentRoute = route;
+    if (route && route.geometry && route.geometry.coordinates) {
+        routeCoordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]); // Convert to lat,lng
+    } else {
+        routeCoordinates = [];
+    }
+    passedRouteCoordinates = [];
+    currentDestination = destinationCoords;
+    lastRouteUpdateTime = 0;
+    
+    console.log('Navigation started with', routeCoordinates.length, 'route points');
     
     // Show simple info in nearestInfo instead of big panel
     const distance = (route.distance / 1000).toFixed(1);
@@ -722,11 +785,15 @@ function getStepIcon(maneuverType) {
     return icons[maneuverType] || '⬆️';
 }
 
-// Auto return to user when no interaction for 3 seconds during navigation
-let autoReturnTimer = null;
-let lastInteractionTime = 0;
+// Auto return to user - DISABLED
+// let autoReturnTimer = null;
+// let lastInteractionTime = 0;
 
 function setupAutoReturnToUser() {
+    // DISABLED: Auto return functionality removed
+    console.log('Auto return disabled');
+    return;
+    
     // Reset timer on any map interaction
     function resetAutoReturnTimer() {
         if (navigationActive) {
@@ -784,11 +851,11 @@ window.stopSimpleNavigation = function() {
     // Stop tracking
     stopLocationTracking();
     
-    // Clear auto return timer
-    if (autoReturnTimer) {
-        clearTimeout(autoReturnTimer);
-        autoReturnTimer = null;
-    }
+    // Clear auto return timer - DISABLED
+    // if (autoReturnTimer) {
+    //     clearTimeout(autoReturnTimer);
+    //     autoReturnTimer = null;
+    // }
     
     // Remove all map event listeners
     map.off('dragstart');
@@ -810,6 +877,13 @@ window.stopSimpleNavigation = function() {
         routeLine = null;
     }
     
+    // Clear smart routing data
+    currentRoute = null;
+    routeCoordinates = [];
+    passedRouteCoordinates = [];
+    currentDestination = null;
+    lastRouteUpdateTime = 0;
+    
     // Clear info
     document.getElementById('nearestInfo').innerHTML = '';
     
@@ -828,10 +902,11 @@ document.getElementById('locateBtn').onclick = function() {
     button.innerHTML = '⏳ Đang tìm...';
     button.disabled = true;
     
+    // Mobile-optimized location options
     const options = {
-        enableHighAccuracy: false,
-        timeout: 15000,
-        maximumAge: 300000
+        enableHighAccuracy: true,     // GPS cao cấp cho độ chính xác tối đa
+        timeout: 12000,               // Đủ thời gian cho GPS lock
+        maximumAge: 1000              // Cache ngắn cho dữ liệu fresh
     };
     
     const successHandler = (pos) => {
@@ -854,6 +929,12 @@ document.getElementById('locateBtn').onclick = function() {
         
         // Start continuous tracking for direction updates automatically
         startLocationTracking();
+        
+        // Initialize compass tracking for real-time beam direction
+        initializeCompassTracking();
+        
+        // Optimize for mobile performance
+        optimizeForMobile();
         
         // Execute pending navigation if exists
         setTimeout(() => {
@@ -1123,10 +1204,13 @@ window.routeToATM = async function(atmLat, atmLng, atmName) {
             // Fit map to show entire route
             map.fitBounds(routeLine.getBounds(), { padding: [20, 80] });
             
-            // Start simple navigation
-            startSimpleNavigation(atmName, route);
-            
-            // Update info with route details
+        // Start simple navigation with destination coordinates
+        startSimpleNavigation(atmName, route, { lat: atmLat, lng: atmLng });
+        
+        // Mobile haptic feedback when navigation starts
+        if ('vibrate' in navigator) {
+            navigator.vibrate([200, 100, 200]); // Short-long-short pattern
+        }            // Update info with route details
             const distance = (route.distance / 1000).toFixed(1);
             const duration = Math.round(route.duration / 60);
             
@@ -1154,7 +1238,7 @@ window.routeToATM = async function(atmLat, atmLng, atmName) {
                 lineJoin: 'round'
             }).addTo(map);
             
-            startSimpleNavigation(atmName, fallbackRoute);
+            startSimpleNavigation(atmName, fallbackRoute, { lat: atmLat, lng: atmLng });
             
             document.getElementById('nearestInfo').innerHTML = 
                 `🗺️ Đường thẳng đến <b>${atmName}</b>
@@ -1183,7 +1267,7 @@ window.routeToATM = async function(atmLat, atmLng, atmName) {
             lineJoin: 'round'
         }).addTo(map);
         
-        startSimpleNavigation(atmName, fallbackRoute);
+        startSimpleNavigation(atmName, fallbackRoute, { lat: atmLat, lng: atmLng });
         
         document.getElementById('nearestInfo').innerHTML = 
             `🗺️ Đường thẳng đến <b>${atmName}</b>
@@ -1231,7 +1315,7 @@ window.routeToPGD = async function(pgdLat, pgdLng, pgdName) {
             map.fitBounds(routeLine.getBounds(), { padding: [20, 80] });
             
             // Start simple navigation
-            startSimpleNavigation(pgdName, route);
+            startSimpleNavigation(pgdName, route, { lat: pgdLat, lng: pgdLng });
             
             const distance = (route.distance / 1000).toFixed(1);
             const duration = Math.round(route.duration / 60);
@@ -1259,7 +1343,7 @@ window.routeToPGD = async function(pgdLat, pgdLng, pgdName) {
                 lineJoin: 'round'
             }).addTo(map);
             
-            startSimpleNavigation(pgdName, fallbackRoute);
+            startSimpleNavigation(pgdName, fallbackRoute, { lat: pgdLat, lng: pgdLng });
             
             document.getElementById('nearestInfo').innerHTML = 
                 `🗺️ Đường thẳng đến <b>${pgdName}</b>
@@ -1286,7 +1370,7 @@ window.routeToPGD = async function(pgdLat, pgdLng, pgdName) {
             lineJoin: 'round'
         }).addTo(map);
         
-        startSimpleNavigation(pgdName, fallbackRoute);
+        startSimpleNavigation(pgdName, fallbackRoute, { lat: pgdLat, lng: pgdLng });
         
         document.getElementById('nearestInfo').innerHTML = 
             `🗺️ Đường thẳng đến <b>${pgdName}</b>
@@ -1325,21 +1409,7 @@ document.getElementById('centerUserBtn').onclick = function() {
     }
 };
 
-document.getElementById('reopenNavBtn').onclick = function() {
-    if (navigationActive) {
-        // Toggle between showing route info and minimizing it
-        const info = document.getElementById('nearestInfo');
-        if (info.style.display === 'none') {
-            info.style.display = '';
-            this.innerHTML = '❌';
-            this.title = 'Ẩn thông tin';
-        } else {
-            info.style.display = 'none';
-            this.innerHTML = '🗺️';
-            this.title = 'Hiện thông tin';
-        }
-    }
-};
+// reopenNavBtn removed - no longer needed
 
 // Initialize rotation after map is ready
 map.whenReady(function() {
@@ -1354,6 +1424,15 @@ document.addEventListener('keydown', function(e) {
         resetMapRotation();
     } else if (e.key === 'c' || e.key === 'C') {
         if (userMarker) centerOnUser();
+    } else if (e.key === 'h' || e.key === 'H') {
+        // Show current user heading
+        showUserHeadingInfo();
+    } else if (e.key === 'o' || e.key === 'O') {
+        // Debug device orientation
+        console.log('🔍 Orientation Debug:');
+        console.log('- Device heading:', deviceOrientationHeading);
+        console.log('- User heading:', getCurrentUserHeading());
+        requestDeviceOrientationPermission();
     } else if (e.key === 'Escape') {
         if (navigationActive) stopSimpleNavigation();
     }
@@ -1424,7 +1503,433 @@ function enableTopbarButtons() {
 }
 
 // Set satellite button as active by default
-document.getElementById('satelliteBtn').classList.add('active');
-document.getElementById('satelliteBtn').title = 'Chuyển bản đồ thường';
+const satelliteBtn = document.getElementById('satelliteBtn');
+if (satelliteBtn) {
+    satelliteBtn.classList.add('active');
+    satelliteBtn.title = 'Chuyển bản đồ thường';
+}
+
+// Advanced routing functions
+function isUserOffRoute(userLat, userLng, routeCoords, threshold = 50) {
+    if (!routeCoords || routeCoords.length === 0) return false;
+    
+    // Find closest point on route
+    let minDistance = Infinity;
+    for (let i = 0; i < routeCoords.length; i++) {
+        const routePoint = routeCoords[i];
+        const distance = getDistance(userLat, userLng, routePoint[0], routePoint[1]) * 1000; // meters
+        if (distance < minDistance) {
+            minDistance = distance;
+        }
+    }
+    
+    console.log('Distance from route:', minDistance.toFixed(1), 'm');
+    return minDistance > threshold;
+}
+
+function updateProgressiveRoute(userLat, userLng) {
+    if (!routeCoordinates || routeCoordinates.length === 0) return;
+    
+    // Find closest point on route and mark previous points as passed
+    let closestIndex = 0;
+    let minDistance = Infinity;
+    
+    for (let i = 0; i < routeCoordinates.length; i++) {
+        const routePoint = routeCoordinates[i];
+        const distance = getDistance(userLat, userLng, routePoint[0], routePoint[1]);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = i;
+        }
+    }
+    
+    // Update passed coordinates (user đã đi qua)
+    if (closestIndex > 0) {
+        const newlyPassed = routeCoordinates.slice(0, closestIndex);
+        passedRouteCoordinates = [...passedRouteCoordinates, ...newlyPassed];
+        routeCoordinates = routeCoordinates.slice(closestIndex);
+        
+        // Redraw route with passed portion hidden
+        updateRouteVisualization();
+        
+        console.log('Route progress updated, passed:', passedRouteCoordinates.length, 'remaining:', routeCoordinates.length);
+    }
+}
+
+function updateRouteVisualization() {
+    // Remove old route
+    if (routeLine) {
+        map.removeLayer(routeLine);
+    }
+    
+    // Only show remaining route (not passed portion)
+    if (routeCoordinates && routeCoordinates.length > 0) {
+        routeLine = L.polyline(routeCoordinates, {
+            color: '#4285F4',
+            weight: 6,
+            opacity: 0.8
+        }).addTo(map);
+    }
+}
+
+async function recalculateRoute() {
+    if (!userMarker || !currentDestination) return;
+    
+    const now = Date.now();
+    // Throttle route recalculation to every 10 seconds
+    if (now - lastRouteUpdateTime < 10000) return;
+    lastRouteUpdateTime = now;
+    
+    console.log('Recalculating route to destination...');
+    
+    const userLatLng = userMarker.getLatLng();
+    
+    try {
+        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLatLng.lng},${userLatLng.lat};${currentDestination.lng},${currentDestination.lat}?overview=full&geometries=geojson&steps=true`);
+        const data = await response.json();
+        
+        if (data.routes && data.routes.length > 0) {
+            const route = data.routes[0];
+            currentRoute = route;
+            routeCoordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]); // Swap lng,lat to lat,lng
+            passedRouteCoordinates = []; // Reset passed coordinates
+            
+            updateRouteVisualization();
+            
+            console.log('Route recalculated successfully');
+            return route;
+        }
+    } catch (error) {
+        console.error('Route recalculation failed:', error);
+    }
+    
+    return null;
+}
+
+// Helper function to get current user heading
+function getCurrentUserHeading() {
+    return currentUserHeading || 0;
+}
+
+function getHeadingDirection(heading) {
+    if (heading >= 337.5 || heading < 22.5) return "Bắc ⬆️";
+    else if (heading >= 22.5 && heading < 67.5) return "Đông Bắc ↗️";
+    else if (heading >= 67.5 && heading < 112.5) return "Đông ➡️";
+    else if (heading >= 112.5 && heading < 157.5) return "Đông Nam ↘️";
+    else if (heading >= 157.5 && heading < 202.5) return "Nam ⬇️";
+    else if (heading >= 202.5 && heading < 247.5) return "Tây Nam ↙️";
+    else if (heading >= 247.5 && heading < 292.5) return "Tây ⬅️";
+    else if (heading >= 292.5 && heading < 337.5) return "Tây Bắc ↖️";
+}
+
+// Function to display user heading info
+function showUserHeadingInfo() {
+    const heading = getCurrentUserHeading();
+    const direction = getHeadingDirection(heading);
+    console.log(`🧭 User đang hướng: ${direction} (${heading.toFixed(1)}°)`);
+    return { heading, direction };
+}
+
+// Device orientation for real-time compass heading
+let deviceOrientationHeading = null;
+let gyroscopeSupported = false;
+let accelerometerData = { x: 0, y: 0, z: 0 };
+let lastOrientationUpdate = 0;
+const ORIENTATION_THROTTLE = 50; // Max 20 FPS for smooth but efficient updates
+
+function requestDeviceOrientationPermission() {
+    console.log('🔐 Requesting device orientation permission...');
+    
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+        // iOS 13+ permission request
+        console.log('📱 iOS detected, requesting permission...');
+        DeviceOrientationEvent.requestPermission()
+            .then(response => {
+                console.log('📋 Permission response:', response);
+                if (response === 'granted') {
+                    console.log('✅ Permission granted!');
+                    startDeviceOrientationTracking();
+                } else {
+                    console.log('❌ Permission denied');
+                }
+            })
+            .catch(error => {
+                console.error('❌ Permission error:', error);
+            });
+    } else {
+        // Android or older iOS
+        console.log('🤖 Android/Desktop detected, starting tracking...');
+        startDeviceOrientationTracking();
+    }
+}
+
+// Make function globally accessible for button clicks
+window.requestDeviceOrientationPermission = requestDeviceOrientationPermission;
+
+function startDeviceOrientationTracking() {
+    if (window.DeviceOrientationEvent) {
+        // Use fast handlers for better mobile performance
+        window.addEventListener('deviceorientationabsolute', handleDeviceOrientationFast, { passive: true });
+        window.addEventListener('deviceorientation', handleDeviceOrientationFast, { passive: true });
+        
+        // Enhanced motion tracking for better accuracy
+        if (window.DeviceMotionEvent) {
+            window.addEventListener('devicemotion', handleDeviceMotion, { passive: false });
+            gyroscopeSupported = true;
+        }
+        
+        // Request high-frequency sensor access (if available)
+        if ('Sensor' in window) {
+            console.log('🎯 Advanced sensor API available');
+            initializeAdvancedSensors();
+        }
+        
+        console.log('📱 Mobile-optimized orientation tracking started');
+        console.log('🔍 Testing high-accuracy sensors...');
+        
+        // Test if orientation is working after 2 seconds
+        setTimeout(() => {
+            if (deviceOrientationHeading === null) {
+                console.log('⚠️ Device orientation not working, using GPS heading fallback');
+            } else {
+                console.log('✅ Device orientation is working properly');
+            }
+        }, 2000);
+    } else {
+        console.log('❌ DeviceOrientationEvent not supported');
+    }
+}
+
+// Fast mobile orientation handling - no smoothing for instant response
+function handleDeviceOrientation(event) {
+    let heading = null;
+    
+    if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
+        // iOS - direct compass heading
+        heading = event.webkitCompassHeading;
+    } else if (event.alpha !== null && event.alpha !== undefined) {
+        // Android - direct alpha conversion
+        heading = (360 - event.alpha + 360) % 360;
+    }
+    
+    if (heading !== null && !isNaN(heading)) {
+        deviceOrientationHeading = heading;
+        
+        // Instant update - no delay for mobile responsiveness
+        if (userMarker) {
+            requestAnimationFrame(() => {
+                const newIcon = createUserLocationIcon(heading);
+                userMarker.setIcon(newIcon);
+            });
+        }
+    }
+}
+
+// Auto-request permission when user marker is created
+function initializeCompassTracking() {
+    if (userMarker) {
+        console.log('🎯 Initializing compass tracking...');
+        requestDeviceOrientationPermission();
+        
+        // Show instruction for iOS users
+        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+            setTimeout(() => {
+                if (deviceOrientationHeading === null) {
+                    console.log('💡 iOS: Bạn cần cho phép truy cập compass để ánh sáng xanh hoạt động');
+                    showCompassPermissionPrompt();
+                }
+            }, 3000);
+        }
+    }
+}
+
+function showCompassPermissionPrompt() {
+    const prompt = document.createElement('div');
+    prompt.style.cssText = `
+        position: fixed;
+        top: 70px;
+        left: 10px;
+        right: 10px;
+        background: rgba(66, 133, 244, 0.95);
+        color: white;
+        padding: 12px;
+        border-radius: 8px;
+        z-index: 2000;
+        text-align: center;
+        font-size: 14px;
+    `;
+    prompt.innerHTML = `
+        🧭 Cho phép truy cập compass để ánh sáng xanh hoạt động
+        <button onclick="requestDeviceOrientationPermission(); this.parentElement.remove();" 
+                style="background: white; color: #4285F4; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 8px; cursor: pointer;">
+            Cho phép
+        </button>
+        <button onclick="this.parentElement.remove();" 
+                style="background: transparent; color: white; border: 1px solid white; padding: 6px 12px; border-radius: 4px; margin-left: 4px; cursor: pointer;">
+            Bỏ qua
+        </button>
+    `;
+    
+    document.body.appendChild(prompt);
+    
+    // Auto remove after 10 seconds
+    setTimeout(() => {
+        if (prompt.parentElement) {
+            prompt.remove();
+        }
+    }, 10000);
+}
+
+// Device Motion API for accelerometer and gyroscope
+function handleDeviceMotion(event) {
+    if (event.accelerationIncludingGravity) {
+        accelerometerData = {
+            x: event.accelerationIncludingGravity.x || 0,
+            y: event.accelerationIncludingGravity.y || 0,
+            z: event.accelerationIncludingGravity.z || 0
+        };
+    }
+    
+    // Use gyroscope data if available for smoother rotation
+    if (event.rotationRate) {
+        const rotationRate = {
+            alpha: event.rotationRate.alpha || 0,
+            beta: event.rotationRate.beta || 0,
+            gamma: event.rotationRate.gamma || 0
+        };
+        
+        // Smooth the compass heading using gyroscope
+        if (deviceOrientationHeading !== null && Math.abs(rotationRate.alpha) > 0.1) {
+            console.log('🌀 Using gyroscope for smooth heading updates');
+        }
+    }
+}
+
+// Advanced sensor initialization for modern mobile devices
+function initializeAdvancedSensors() {
+    // Try to access magnetometer directly (for compass)
+    if ('Magnetometer' in window) {
+        try {
+            const magnetometer = new Magnetometer({ frequency: 60 });
+            magnetometer.addEventListener('reading', () => {
+                console.log('🧲 Magnetometer reading:', magnetometer.x, magnetometer.y, magnetometer.z);
+            });
+            magnetometer.start();
+        } catch (error) {
+            console.log('🧲 Magnetometer not available:', error.message);
+        }
+    }
+    
+    // Access gyroscope for rotation rate
+    if ('Gyroscope' in window) {
+        try {
+            const gyroscope = new Gyroscope({ frequency: 60 });
+            gyroscope.addEventListener('reading', () => {
+                console.log('🌀 Gyroscope reading:', gyroscope.x, gyroscope.y, gyroscope.z);
+            });
+            gyroscope.start();
+        } catch (error) {
+            console.log('🌀 Gyroscope not available:', error.message);
+        }
+    }
+}
+
+// Mobile performance optimizations
+function optimizeForMobile() {
+    // Request high performance mode
+    if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => {
+            console.log('⚡ Using idle time for optimizations');
+        });
+    }
+    
+    // Prevent screen sleep during navigation
+    if ('wakeLock' in navigator) {
+        navigator.wakeLock.request('screen').then((wakeLock) => {
+            console.log('🔋 Screen wake lock activated');
+        }).catch((err) => {
+            console.log('🔋 Wake lock failed:', err.message);
+        });
+    }
+    
+    // Request persistent storage for offline capability
+    if ('storage' in navigator && 'persist' in navigator.storage) {
+        navigator.storage.persist().then((persistent) => {
+            if (persistent) {
+                console.log('💾 Persistent storage granted');
+            }
+        });
+    }
+    
+    // Battery-aware optimization
+    if ('getBattery' in navigator) {
+        navigator.getBattery().then((battery) => {
+            console.log(`🔋 Battery level: ${(battery.level * 100).toFixed(0)}%`);
+            
+            // Reduce update frequency if battery is low
+            if (battery.level < 0.2) {
+                console.log('🔋 Low battery - reducing GPS frequency');
+                // Could adjust GPS polling here
+            }
+            
+            battery.addEventListener('levelchange', () => {
+                console.log(`🔋 Battery level changed: ${(battery.level * 100).toFixed(0)}%`);
+            });
+        });
+    }
+    
+    // Network information for data optimization
+    if ('connection' in navigator) {
+        const connection = navigator.connection;
+        console.log(`📶 Network: ${connection.effectiveType} (${connection.downlink}Mbps)`);
+        
+        // Optimize based on connection speed
+        if (connection.effectiveType === 'slow-2g' || connection.effectiveType === '2g') {
+            console.log('📶 Slow connection - reducing API calls');
+        }
+    }
+}
+
+// Alternative fast method: Direct CSS transform (faster than recreating icons)
+function updateUserDirectionFast(heading) {
+    if (userMarker && userMarker.getElement) {
+        const markerElement = userMarker.getElement();
+        if (markerElement) {
+            const container = markerElement.querySelector('.user-location-container');
+            if (container) {
+                container.style.transform = `rotate(${heading}deg)`;
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Enhanced orientation handler with throttling and fast CSS method
+function handleDeviceOrientationFast(event) {
+    const now = performance.now();
+    if (now - lastOrientationUpdate < ORIENTATION_THROTTLE) {
+        return; // Throttle updates for smooth performance
+    }
+    lastOrientationUpdate = now;
+    
+    let heading = null;
+    
+    if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
+        heading = event.webkitCompassHeading;
+    } else if (event.alpha !== null && event.alpha !== undefined) {
+        heading = (360 - event.alpha + 360) % 360;
+    }
+    
+    if (heading !== null && !isNaN(heading)) {
+        deviceOrientationHeading = heading;
+        
+        // Try fast CSS method first, fallback to icon recreation
+        if (!updateUserDirectionFast(heading) && userMarker) {
+            const newIcon = createUserLocationIcon(heading);
+            userMarker.setIcon(newIcon);
+        }
+    }
+}
 
 console.log('ATM Location App initialized with custom map rotation!');
