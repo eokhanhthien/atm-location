@@ -60,15 +60,13 @@ satelliteLayer.addTo(map);
 let currentLayer = 'satellite';
 let userMarker, nearestATM, nearestPGD, routeLine, atmMarkers = [], pgdMarkers = [];
 
-// Mobile-only touch rotation like Google Maps
+// Mobile touch rotation like Google Maps - FULLY ENABLED
 function initializeMapRotation() {
-    // DISABLED: Touch rotation functionality removed due to compatibility issues
-    console.log('Map rotation disabled');
-    return;
+    console.log('🔄 FULLY ENABLING touch rotation for complete Google Maps experience');
     
-    const container = map.getContainer();
+    const mapContainer = map.getContainer();
     
-    console.log('Initializing mobile touch rotation only');
+    console.log('✅ Mobile touch rotation ACTIVE');
     
     // Touch rotation variables
     let isTouchRotating = false;
@@ -76,8 +74,8 @@ function initializeMapRotation() {
     let initialTouchDistance = 0;
     let startBearing = 0;
     
-    // Touch rotation (2-finger) - MOBILE ONLY
-    container.addEventListener('touchstart', (e) => {
+    // Touch rotation (2-finger) - FULLY ENABLED
+    mapContainer.addEventListener('touchstart', (e) => {
         if (e.touches.length === 2) {
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
@@ -92,11 +90,12 @@ function initializeMapRotation() {
             map.dragging.disable();
             
             showRotationIndicator();
+            console.log('🔄 2-finger rotation started');
             e.preventDefault();
         }
     }, { passive: false });
     
-    container.addEventListener('touchmove', (e) => {
+    mapContainer.addEventListener('touchmove', (e) => {
         if (e.touches.length === 2 && isTouchRotating) {
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
@@ -125,7 +124,7 @@ function initializeMapRotation() {
         }
     }, { passive: false });
     
-    container.addEventListener('touchend', (e) => {
+    mapContainer.addEventListener('touchend', (e) => {
         if (isTouchRotating) {
             isTouchRotating = false;
             hideRotationIndicator();
@@ -135,30 +134,30 @@ function initializeMapRotation() {
                 map.touchZoom.enable();
                 map.dragging.enable();
             }, 100);
+            
+            console.log('🔄 2-finger rotation ended');
         }
     });
 }
 
-// Rotate map using proper Leaflet bearing API
+// Rotate map using CSS transform - FULLY ENABLED
 function rotateMapTouch(angle) {
-    // DISABLED: Rotation functionality removed
-    console.log('Rotation disabled, angle requested:', angle);
-    return;
-    
     currentBearing = ((angle % 360) + 360) % 360;
     
-    // Use Leaflet bearing API for real map rotation
-    if (map.setBearing) {
-        map.setBearing(currentBearing);
-        console.log('Map rotated to:', currentBearing, '°');
-    } else if (map.options.bearing !== undefined) {
-        // Fallback: set bearing option and refresh
-        map.options.bearing = currentBearing;
-        map.invalidateSize();
-        console.log('Map bearing set via options:', currentBearing, '°');
-    } else {
-        // Last resort: just update compass
-        console.log('No rotation API available, compass only');
+    console.log('🔄 Rotating map to:', currentBearing.toFixed(1) + '°');
+    
+    // Use CSS transform for smooth rotation (Leaflet bearing API not available)
+    const mapPane = map.getPanes().mapPane;
+    if (mapPane) {
+        mapPane.style.transform = `rotate(${currentBearing}deg)`;
+        mapPane.style.transformOrigin = 'center center';
+    }
+    
+    // Also rotate tiles pane for complete rotation
+    const tilePane = map.getPanes().tilePane;
+    if (tilePane) {
+        tilePane.style.transform = `rotate(${currentBearing}deg)`;
+        tilePane.style.transformOrigin = 'center center';
     }
     
     updateCompassNeedle();
@@ -178,19 +177,34 @@ function getTouchAngle(touch1, touch2) {
 }
 
 function showRotationIndicator() {
-    const indicator = document.getElementById('rotationIndicator');
-    if (indicator) {
-        indicator.classList.add('active');
-        updateRotationIndicator();
-    } else {
-        console.log('Rotation indicator disabled');
+    // Create indicator if not exists
+    let indicator = document.getElementById('rotationIndicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'rotationIndicator';
+        indicator.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 14px;
+            z-index: 1000;
+            display: none;
+        `;
+        document.body.appendChild(indicator);
     }
+    
+    indicator.style.display = 'block';
+    updateRotationIndicator();
 }
 
 function hideRotationIndicator() {
     const indicator = document.getElementById('rotationIndicator');
     if (indicator) {
-        indicator.classList.remove('active');
+        indicator.style.display = 'none';
     }
 }
 
@@ -209,8 +223,22 @@ function updateRotationIndicator() {
 
 // Map control functions
 function resetMapRotation() {
-    // DISABLED: Rotation functionality removed
-    console.log('Rotation reset disabled');
+    console.log('🧭 Resetting map rotation to North');
+    currentBearing = 0;
+    
+    // Reset CSS transforms
+    const mapPane = map.getPanes().mapPane;
+    if (mapPane) {
+        mapPane.style.transform = 'rotate(0deg)';
+    }
+    
+    const tilePane = map.getPanes().tilePane;
+    if (tilePane) {
+        tilePane.style.transform = 'rotate(0deg)';
+    }
+    
+    updateCompassNeedle();
+    updateRotationIndicator();
 }
 
 function resetMapView() {
@@ -415,18 +443,18 @@ const pgdIcon = L.divIcon({
     popupAnchor: [0, -40]
 });
 
-// Create user location icon with simple mobile direction indicator
+// Create user location icon with simple static light beam like Google Maps
 function createUserLocationIcon(heading = 0) {
     return L.divIcon({
         html: `<div class="user-location-container" style="transform: rotate(${heading}deg)">
-            <div class="user-direction-indicator"></div>
-            <div class="user-pulse-ring"></div>
+            <div class="user-light-beam-outer"></div>
+            <div class="user-light-beam"></div>
             <div class="user-location-dot"></div>
         </div>`,
         className: 'custom-user-icon',
-        iconSize: [32, 32],
-        iconAnchor: [16, 16],
-        popupAnchor: [0, -16]
+        iconSize: [64, 64],
+        iconAnchor: [32, 32],
+        popupAnchor: [0, -32]
     });
 }
 
@@ -485,15 +513,32 @@ style.textContent = `
         transform: rotate(45deg);
     }
     
-    /* Google Maps style user location with direction arrow */
+    /* Simple user location like Google Maps */
     .user-location-container {
         position: relative;
-        width: 32px;
-        height: 32px;
+        width: 64px;
+        height: 64px;
         display: flex;
         align-items: center;
         justify-content: center;
         transform-origin: center center;
+    }
+    
+    /* Simple outer beam - no animation */
+    .user-light-beam-outer {
+        position: absolute;
+        width: 60px;
+        height: 80px;
+        top: -40px;
+        left: -30px;
+        background: linear-gradient(
+            to top,
+            rgba(66, 133, 244, 0.2) 0%,
+            rgba(66, 133, 244, 0.1) 60%,
+            transparent 100%
+        );
+        clip-path: polygon(35% 100%, 65% 100%, 75% 0%, 25% 0%);
+        z-index: 0;
     }
     
     .user-location-dot {
@@ -504,64 +549,44 @@ style.textContent = `
         border: 3px solid #fff;
         border-radius: 50%;
         box-shadow: 0 2px 8px rgba(66, 133, 244, 0.4);
-        z-index: 2;
+        z-index: 3;
     }
     
-    .user-direction-arrow {
+    /* Simple static light beam - like Google Maps */
+    .user-light-beam {
         position: absolute;
-        width: 100%;
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+        width: 40px;
+        height: 60px;
+        top: -30px;
+        left: -20px;
+        background: linear-gradient(
+            to top,
+            rgba(66, 133, 244, 0.4) 0%,
+            rgba(66, 133, 244, 0.2) 50%,
+            transparent 100%
+        );
+        clip-path: polygon(40% 100%, 60% 100%, 70% 0%, 30% 0%);
         z-index: 1;
     }
     
-    .arrow-body {
-        position: absolute;
-        width: 3px;
-        height: 20px;
-        background: #4285F4;
-        border-radius: 1.5px;
-        top: 2px;
-    }
+
     
-    .arrow-head {
-        position: absolute;
-        width: 0;
-        height: 0;
-        border-left: 4px solid transparent;
-        border-right: 4px solid transparent;
-        border-bottom: 8px solid #4285F4;
-        top: 0px;
-    }
-    
-    /* Pulsing animation for user location */
+    /* Simple background circle - no animation */
     .user-location-container::before {
         content: '';
         position: absolute;
-        width: 32px;
-        height: 32px;
-        background: rgba(66, 133, 244, 0.2);
+        width: 24px;
+        height: 24px;
+        top: 20px;
+        left: 20px;
+        background: rgba(66, 133, 244, 0.1);
         border-radius: 50%;
-        animation: pulse 2s infinite;
         z-index: 0;
     }
     
-    @keyframes pulse {
-        0% {
-            transform: scale(0.5);
-            opacity: 1;
-        }
-        70% {
-            transform: scale(1.2);
-            opacity: 0.3;
-        }
-        100% {
-            transform: scale(1.5);
-            opacity: 0;
-        }
-    }
+
+    
+
 `;
 document.head.appendChild(style);
 
@@ -653,7 +678,7 @@ popupStyle.textContent = `
 `;
 document.head.appendChild(popupStyle);
 
-// Function to show location permission popup
+// Function to show combined location & compass permission popup
 function showLocationPopup() {
     // Remove existing popup if any
     const existingPopup = document.querySelector('.location-popup-overlay');
@@ -665,14 +690,11 @@ function showLocationPopup() {
     popup.className = 'location-popup-overlay';
     popup.innerHTML = `
         <div class="location-popup">
-            <h3>🗺️ Cần truy cập vị trí</h3>
-            <p>Để sử dụng tính năng chỉ đường, chúng tôi cần biết vị trí hiện tại của bạn.</p>
-            <p><strong>Vui lòng:</strong></p>
-            <p>1. Bấm "Cho phép" khi trình duyệt hỏi<br>
-               2. Hoặc bấm "📍 Vị trí" để bật định vị</p>
+            <h3>� Bật vị trí</h3>
+            <p>Cần vị trí để chỉ đường và compass để xem hướng di chuyển</p>
             <div class="location-popup-buttons">
-                <button class="btn-primary" onclick="enableLocationAndClose()">📍 Bật vị trí ngay</button>
-                <button class="btn-secondary" onclick="closeLocationPopup()">Để sau</button>
+                <button class="btn-primary" onclick="enableLocationAndCompass()">Bật</button>
+                <button class="btn-secondary" onclick="closeLocationPopup()">Bỏ qua</button>
             </div>
         </div>
     `;
@@ -695,10 +717,15 @@ window.closeLocationPopup = function() {
     }
 };
 
-// Function to enable location and close popup
-window.enableLocationAndClose = function() {
+// Function to enable both location and compass
+window.enableLocationAndCompass = function() {
     closeLocationPopup();
+    // First enable location
     document.getElementById('locateBtn').click();
+    // Then request compass permission after a short delay
+    setTimeout(() => {
+        requestDeviceOrientationPermission();
+    }, 1000);
 };
 
 // Execute pending navigation after location is obtained
@@ -930,8 +957,8 @@ document.getElementById('locateBtn').onclick = function() {
         // Start continuous tracking for direction updates automatically
         startLocationTracking();
         
-        // Initialize compass tracking for real-time beam direction
-        initializeCompassTracking();
+        // FORCE compass permission dialog immediately
+        forceCompassPermission();
         
         // Optimize for mobile performance
         optimizeForMobile();
@@ -1207,6 +1234,14 @@ window.routeToATM = async function(atmLat, atmLng, atmName) {
         // Start simple navigation with destination coordinates
         startSimpleNavigation(atmName, route, { lat: atmLat, lng: atmLng });
         
+        // FORCE compass permission for navigation - silently
+        if (!deviceOrientationHeading) {
+            console.log('🧭 Navigation started - requesting compass quietly');
+            setTimeout(() => {
+                requestDeviceOrientationPermission();
+            }, 1000);
+        }
+        
         // Mobile haptic feedback when navigation starts
         if ('vibrate' in navigator) {
             navigator.vibrate([200, 100, 200]); // Short-long-short pattern
@@ -1316,6 +1351,14 @@ window.routeToPGD = async function(pgdLat, pgdLng, pgdName) {
             
             // Start simple navigation
             startSimpleNavigation(pgdName, route, { lat: pgdLat, lng: pgdLng });
+            
+            // FORCE compass permission for navigation - silently
+            if (!deviceOrientationHeading) {
+                console.log('🧭 PGD Navigation started - requesting compass quietly');
+                setTimeout(() => {
+                    requestDeviceOrientationPermission();
+                }, 1000);
+            }
             
             const distance = (route.distance / 1000).toFixed(1);
             const duration = Math.round(route.duration / 60);
@@ -1684,15 +1727,14 @@ function startDeviceOrientationTracking() {
             initializeAdvancedSensors();
         }
         
-        console.log('📱 Mobile-optimized orientation tracking started');
-        console.log('🔍 Testing high-accuracy sensors...');
+        console.log('📱 Orientation tracking started');
         
         // Test if orientation is working after 2 seconds
         setTimeout(() => {
             if (deviceOrientationHeading === null) {
-                console.log('⚠️ Device orientation not working, using GPS heading fallback');
+                console.log('⚠️ Using GPS heading fallback');
             } else {
-                console.log('✅ Device orientation is working properly');
+                console.log('✅ Device orientation active');
             }
         }, 2000);
     } else {
@@ -1725,22 +1767,132 @@ function handleDeviceOrientation(event) {
     }
 }
 
-// Auto-request permission when user marker is created
-function initializeCompassTracking() {
-    if (userMarker) {
-        console.log('🎯 Initializing compass tracking...');
+// FORCE compass permission immediately - no delays
+function forceCompassPermission() {
+    console.log('🧭 FORCING compass permission dialog immediately');
+    
+    // Skip separate compass dialog since we now have combined dialog
+    // Just initialize compass tracking quietly
+    setTimeout(() => {
         requestDeviceOrientationPermission();
-        
-        // Show instruction for iOS users
-        if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
-            setTimeout(() => {
-                if (deviceOrientationHeading === null) {
-                    console.log('💡 iOS: Bạn cần cho phép truy cập compass để ánh sáng xanh hoạt động');
-                    showCompassPermissionPrompt();
-                }
-            }, 3000);
-        }
-    }
+    }, 500);
+}
+
+// Enhanced compass permission dialog
+function showCompassPermissionDialog() {
+    // Remove any existing dialogs
+    const existing = document.querySelector('.compass-permission-dialog');
+    if (existing) existing.remove();
+    
+    const dialog = document.createElement('div');
+    dialog.className = 'compass-permission-dialog';
+    dialog.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.7);
+        z-index: 3000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+    `;
+    
+    dialog.innerHTML = `
+        <div style="
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 300px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        ">
+            <div style="font-size: 40px; margin-bottom: 12px;">🧭</div>
+            <h3 style="margin: 0 0 12px 0; color: #003A6E; font-size: 18px;">Bật Compass</h3>
+            <p style="margin: 0 0 16px 0; color: #666; font-size: 14px;">
+                Cho phép compass để xem vệt ánh sáng chỉ hướng
+            </p>
+            <div style="display: flex; gap: 8px; justify-content: center;">
+                <button onclick="enableCompassFeatures()" style="
+                    background: #4285F4; 
+                    color: white; 
+                    border: none; 
+                    padding: 10px 20px; 
+                    border-radius: 6px; 
+                    cursor: pointer; 
+                    font-size: 14px;
+                    font-weight: bold;
+                ">
+                    Bật ngay
+                </button>
+                <button onclick="skipCompassFeatures()" style="
+                    background: #f0f0f0; 
+                    color: #666; 
+                    border: none; 
+                    padding: 10px 16px; 
+                    border-radius: 6px; 
+                    cursor: pointer;
+                    font-size: 14px;
+                ">
+                    Bỏ qua
+                </button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(dialog);
+}
+
+// Global functions for dialog buttons
+window.enableCompassFeatures = function() {
+    console.log('🚀 User chose to enable ALL compass features');
+    
+    // Close dialog
+    const dialog = document.querySelector('.compass-permission-dialog');
+    if (dialog) dialog.remove();
+    
+    // Request permissions immediately
+    requestDeviceOrientationPermission();
+    
+    // Show success message
+    setTimeout(() => {
+        showCompassSuccessMessage();
+    }, 1000);
+};
+
+window.skipCompassFeatures = function() {
+    console.log('⏭️ User skipped compass features');
+    
+    // Close dialog
+    const dialog = document.querySelector('.compass-permission-dialog');
+    if (dialog) dialog.remove();
+};
+
+function showCompassSuccessMessage() {
+    const success = document.createElement('div');
+    success.style.cssText = `
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #4285F4;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 6px;
+        z-index: 2000;
+        font-size: 14px;
+        box-shadow: 0 2px 8px rgba(66, 133, 244, 0.3);
+    `;
+    success.textContent = '🧭 Compass đã bật';
+    
+    document.body.appendChild(success);
+    
+    setTimeout(() => {
+        success.remove();
+    }, 2000);
 }
 
 function showCompassPermissionPrompt() {
@@ -1759,14 +1911,14 @@ function showCompassPermissionPrompt() {
         font-size: 14px;
     `;
     prompt.innerHTML = `
-        🧭 Cho phép truy cập compass để ánh sáng xanh hoạt động
+        🧭 Bật compass?
         <button onclick="requestDeviceOrientationPermission(); this.parentElement.remove();" 
-                style="background: white; color: #4285F4; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 8px; cursor: pointer;">
-            Cho phép
+                style="background: white; color: #4285F4; border: none; padding: 4px 10px; border-radius: 4px; margin-left: 8px; cursor: pointer; font-size: 13px;">
+            Bật
         </button>
         <button onclick="this.parentElement.remove();" 
-                style="background: transparent; color: white; border: 1px solid white; padding: 6px 12px; border-radius: 4px; margin-left: 4px; cursor: pointer;">
-            Bỏ qua
+                style="background: transparent; color: white; border: 1px solid white; padding: 4px 8px; border-radius: 4px; margin-left: 4px; cursor: pointer; font-size: 13px;">
+            Không
         </button>
     `;
     
@@ -1864,17 +2016,10 @@ function optimizeForMobile() {
     // Battery-aware optimization
     if ('getBattery' in navigator) {
         navigator.getBattery().then((battery) => {
-            console.log(`🔋 Battery level: ${(battery.level * 100).toFixed(0)}%`);
-            
             // Reduce update frequency if battery is low
             if (battery.level < 0.2) {
-                console.log('🔋 Low battery - reducing GPS frequency');
-                // Could adjust GPS polling here
+                console.log('🔋 Low battery mode');
             }
-            
-            battery.addEventListener('levelchange', () => {
-                console.log(`🔋 Battery level changed: ${(battery.level * 100).toFixed(0)}%`);
-            });
         });
     }
     
