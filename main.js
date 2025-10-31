@@ -301,7 +301,7 @@ function updateUserPosition(position) {
         const distance = Math.sqrt(deltaLat * deltaLat + deltaLng * deltaLng) * 111000; // rough meters
         if (distance > 5) {
             heading = (Math.atan2(deltaLng, deltaLat) * 180 / Math.PI + 90 + 360) % 360;
-            console.log('Calculated heading from movement:', heading.toFixed(1), '°, distance:', distance.toFixed(1), 'm');
+            // console.log('Calculated heading from movement:', heading.toFixed(1), '°, distance:', distance.toFixed(1), 'm');
         }
     }
 
@@ -326,7 +326,7 @@ function updateUserPosition(position) {
         // 2. Fallback to GPS heading (movement direction)
         else if (heading !== null && heading !== undefined && !isNaN(heading)) {
             finalHeading = heading;
-            console.log(`📍 GPS heading: ${getHeadingDirection(finalHeading)} (${finalHeading.toFixed(1)}°)`);
+            // console.log(`📍 GPS heading: ${getHeadingDirection(finalHeading)} (${finalHeading.toFixed(1)}°)`);
         }
         // 3. Last resort: Calculate from movement
         else if (lastPosition) {
@@ -360,10 +360,10 @@ function updateUserPosition(position) {
             }).addTo(map);
         }
 
-        // Auto follow during navigation - zoom sát
+        // Auto follow during navigation - DISABLED
         if (navigationActive) {
-            // Zoom sát và follow user trong navigation
-            map.setView([lat, lng], 19);
+            // Auto follow disabled - user can control map freely
+            // map.setView([lat, lng], 19);
 
             // Smart routing: Update route progress and check for deviations
             if (routeCoordinates && routeCoordinates.length > 0) {
@@ -1521,7 +1521,7 @@ function isUserOffRoute(userLat, userLng, routeCoords, threshold = 50) {
         }
     }
 
-    console.log('Distance from route:', minDistance.toFixed(1), 'm');
+    // console.log('Distance from route:', minDistance.toFixed(1), 'm');
     return minDistance > threshold;
 }
 
