@@ -73,6 +73,7 @@ let pgdMarkers = [];
 let currentRoute = null;
 let currentDestination = null;
 let routeSourceAdded = false;
+let currentRouteGeojson = null;
 let pendingNavigation = null;
 let currentStyle = 'satellite';
 
@@ -129,21 +130,19 @@ function createUserMarkerElement(heading = 0) {
     return el;
 }
 
-// Hiển thị popup xin quyền
+// Hiển thị popup đơn giản
 function showLocationPopup() {
     const popup = document.createElement('div');
     popup.className = 'location-popup-overlay';
     popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;';
     popup.innerHTML = `
-        <div style="background:white;border-radius:12px;padding:24px;max-width:400px;width:100%;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
-            <p><strong>🗺️ MapLibre GL JS - Tương tự Mapbox!</strong></p>
-            <p>📍 <strong>Vị trí</strong> - Chỉ đường đến ATM/PGD<br>
-            🔄 <strong>Xoay map</strong> - 2 ngón tay như Google Maps<br>
-            🎮 <strong>3D</strong> - Pitch, bearing, smooth animation</p>
-            <div style="display:flex;gap:10px;justify-content:center;">
-                <button onclick="enableLocationAndClose()" style="background:#003A6E;color:white;border:none;padding:10px 20px;border-radius:6px;cursor:pointer;">Bật tất cả</button>
-                <button onclick="closeLocationPopup()" style="background:#f8f9fa;color:#666;border:1px solid #ddd;padding:10px 20px;border-radius:6px;cursor:pointer;">Bỏ qua</button>
-            </div>
+        <div style="background:white;border-radius:12px;padding:24px;max-width:350px;width:100%;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+            <div style="font-size:48px;margin-bottom:16px;">📍</div>
+            <h3 style="margin:0 0 8px 0;color:#003A6E;">Bật Vị Trí & Compass</h3>
+            <p style="margin:0 0 20px 0;color:#666;font-size:14px;">Để sử dụng chỉ đường và xoay map theo hướng</p>
+            <button onclick="enableAllFeaturesAndClose()" style="background:#003A6E;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;width:100%;">
+                🚀 Bật Tất Cả
+            </button>
         </div>
     `;
     document.body.appendChild(popup);
@@ -155,9 +154,34 @@ window.closeLocationPopup = function () {
     if (popup) popup.remove();
 };
 
-window.enableLocationAndClose = function () {
+window.enableAllFeaturesAndClose = function () {
     closeLocationPopup();
-    document.getElementById('locateBtn').click();
+    
+    // Bật location tracking ngay
+    if (navigator.geolocation) {
+        // Request permissions trước
+        navigator.permissions.query({name: 'geolocation'}).then(function(result) {
+            if (result.state === 'granted' || result.state === 'prompt') {
+                // Bật location
+                document.getElementById('locateBtn').click();
+            }
+        }).catch(() => {
+            // Fallback: thử bật location trực tiếp
+            document.getElementById('locateBtn').click();
+        });
+    }
+    
+    // Bật compass/orientation (nếu có)
+    if (window.DeviceOrientationEvent) {
+        // Request orientation permission trên iOS
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission().then(response => {
+                if (response === 'granted') {
+                    console.log('✅ Compass permission granted');
+                }
+            }).catch(console.error);
+        }
+    }
 };
 
 // Cập nhật vị trí user
@@ -364,6 +388,9 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
                 geometry: route.geometry
             };
 
+            // Lưu route data để restore sau khi đổi style
+            currentRouteGeojson = geojson;
+
             // Xóa route cũ nếu có
             if (map.getSource('route')) {
                 if (map.getLayer('route-background')) map.removeLayer('route-background');
@@ -470,6 +497,9 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
                 geometry: route.geometry
             };
 
+            // Lưu route data để restore sau khi đổi style
+            currentRouteGeojson = geojson;
+
             // Xóa route cũ nếu có
             if (map.getSource('route')) {
                 if (map.getLayer('route-background')) map.removeLayer('route-background');
@@ -559,6 +589,9 @@ function drawStraightLine(start, end, name) {
             coordinates: [start, end]
         }
     };
+
+    // Lưu route data để restore sau khi đổi style
+    currentRouteGeojson = geojson;
 
     // Xóa route cũ
     if (map.getSource('route')) {
@@ -688,6 +721,7 @@ window.stopSimpleNavigation = function () {
 
     currentRoute = null;
     currentDestination = null;
+    currentRouteGeojson = null;
 
     document.getElementById('nearestInfo').innerHTML = '<div style="text-align:center;padding:8px;color:#666;">Chọn điểm trên bản đồ để chỉ đường</div>';
 
@@ -909,7 +943,7 @@ map.on('load', () => {
     }, 1000);
 });
 
-// Restore markers sau khi đổi style
+// Restore markers và routes sau khi đổi style
 map.on('styledata', () => {
     // Re-add markers sau khi style thay đổi
     setTimeout(() => {
@@ -922,7 +956,56 @@ map.on('styledata', () => {
         if (userMarker) {
             userMarker.addTo(map);
         }
-    }, 100);
+        
+        // Restore route nếu đang navigation
+        if (navigationActive && currentRouteGeojson) {
+            // Add route source
+            if (!map.getSource('route')) {
+                map.addSource('route', {
+                    type: 'geojson',
+                    data: currentRouteGeojson
+                });
+            }
+            
+            // Add route layers
+            if (!map.getLayer('route-background')) {
+                map.addLayer({
+                    id: 'route-background',
+                    type: 'line',
+                    source: 'route',
+                    layout: {
+                        'line-join': 'round',
+                        'line-cap': 'round'
+                    },
+                    paint: {
+                        'line-color': '#1557b0',
+                        'line-width': 10,
+                        'line-opacity': 0.8
+                    }
+                });
+            }
+            
+            if (!map.getLayer('route')) {
+                map.addLayer({
+                    id: 'route',
+                    type: 'line',
+                    source: 'route',
+                    layout: {
+                        'line-join': 'round',
+                        'line-cap': 'round'
+                    },
+                    paint: {
+                        'line-color': '#4285F4',
+                        'line-width': currentRouteGeojson.geometry.type === 'LineString' && currentRouteGeojson.geometry.coordinates.length === 2 ? 6 : 7,
+                        'line-opacity': currentRouteGeojson.geometry.type === 'LineString' && currentRouteGeojson.geometry.coordinates.length === 2 ? 0.9 : 1,
+                        ...(currentRouteGeojson.geometry.type === 'LineString' && currentRouteGeojson.geometry.coordinates.length === 2 ? { 'line-dasharray': [15, 10] } : {})
+                    }
+                });
+            }
+            
+            routeSourceAdded = true;
+        }
+    }, 200);
 });
 
 // Nút về vị trí user ở góc phải dưới
