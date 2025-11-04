@@ -5,11 +5,9 @@
     <title>ATM Locator - VietinBank Cà Mau</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" type="image/svg+xml" href="./images/logo.svg">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-    <!-- Standard Leaflet -->
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <!-- Real Leaflet Rotation Plugin -->
-    <script src="https://cdn.jsdelivr.net/npm/leaflet-bearing@1.0.0/leaflet-bearing.min.js"></script>
+    <!-- MapLibre GL JS - Fork mã nguồn mở của Mapbox, 100% miễn phí -->
+    <link href="https://unpkg.com/maplibre-gl@4.0.2/dist/maplibre-gl.css" rel="stylesheet" />
+    <script src="https://unpkg.com/maplibre-gl@4.0.2/dist/maplibre-gl.js"></script>
     <style>
         body {
             font-family: 'Segoe UI', Arial, sans-serif;
@@ -197,9 +195,8 @@
             }
         }
 
-        /* Move zoom controls to bottom-left */
-        .leaflet-top.leaflet-left {
-            top: auto !important;
+        /* Mapbox controls positioning */
+        .mapboxgl-ctrl-bottom-left {
             bottom: 20px;
         }
 
@@ -232,8 +229,12 @@
             color: #fff;
         }
 
-        /* Hide attribution control */
-        .leaflet-control-attribution {
+        /* Hide Mapbox attribution */
+        .mapboxgl-ctrl-attrib {
+            display: none !important;
+        }
+        
+        .mapboxgl-compact {
             display: none !important;
         }
 
@@ -374,6 +375,19 @@
         .leaflet-container {
             touch-action: pan-x pan-y;
         }
+        
+        /* Custom styles for rotation */
+        .custom-atm-icon, .custom-pgd-icon, .custom-user-icon {
+            background: none !important;
+            border: none !important;
+        }
+        
+        /* Rotation indicator */
+        .leaflet-control-rotate {
+            background: white;
+            border-radius: 4px;
+            box-shadow: 0 1px 5px rgba(0,0,0,0.65);
+        }
 
 
 
@@ -422,7 +436,7 @@
                 font-size: 0.8em;
             }
 
-            .leaflet-top.leaflet-left {
+            .mapboxgl-ctrl-bottom-left {
                 bottom: 15px;
             }
 
@@ -461,13 +475,15 @@
         <button id="showAllBtn" class="btn info">🏢 PGD + ATM</button>
         <button id="showATMBtn" class="btn success">🏧 ATM</button>
         <button id="showPGDBtn" class="btn warning">🏢 PGD</button>
+        <button id="mapTypeBtn" class="btn" style="background:#ff6b35;">🗺️ 2D</button>
+        <button id="centerCurrentBtn" class="btn" style="background:#28a745;" title="Chuột phải để quay về vị trí hiện tại">🎯 Về vị trí</button>
         <div id="nearestInfo">
             <div style="text-align: center; padding: 8px; color: #666;">
                 Chọn điểm trên bản đồ để chỉ đường
             </div>
         </div>
     </div>
-    <div id="satelliteBtn" title="Chuyển bản đồ vệ tinh">🛰️</div>
+
     
     <!-- Navigation Controls - Only show during navigation -->
     <div class="map-controls" id="navigationControls" style="display: none;">
@@ -492,6 +508,6 @@
     </div>
 
     <div id="map"></div>
-    <script src="main.js"></script>
+    <script src="maplibre.js"></script>
 </body>
 </html>

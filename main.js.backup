@@ -752,31 +752,31 @@ function startSimpleNavigation(destination, route, destinationCoords = null) {
 
 function getStepIcon(maneuverType) {
     if (!navigationActive || !userMarker || !currentDestination) return;
-    
+
     const userPos = userMarker.getLatLng();
     const destDistance = getDistance(userPos.lat, userPos.lng, currentDestination.lat, currentDestination.lng);
     const distanceKm = destDistance.toFixed(1);
-    
+
     // Calculate estimated time based on average speed (assume 30km/h in city)
     const estimatedMinutes = Math.round(destDistance * 2); // roughly 30km/h
     const etaTime = new Date(Date.now() + estimatedMinutes * 60 * 1000);
     const etaStr = etaTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-    
+
     // Update progress display
     const progressEl = document.getElementById('navigationProgress');
     if (progressEl) {
         if (destDistance < 0.05) { // Less than 50m - Arrived!
             progressEl.innerHTML = '🎉 <strong>Bạn đã đến nơi!</strong> (< 50m)';
-            
+
             // Auto-complete navigation when arrived
             if (!window.arrivalNotified) {
                 window.arrivalNotified = true;
-                
+
                 // Voice announcement
                 if (voiceEnabled) {
                     speakInstruction('Bạn đã đến nơi. Chúc bạn một ngày tốt lành!');
                 }
-                
+
                 // Auto stop navigation after 5 seconds
                 setTimeout(() => {
                     if (navigationActive) {
@@ -792,7 +792,7 @@ function getStepIcon(maneuverType) {
             window.arrivalNotified = false; // Reset for next time
         }
     }
-    
+
     // Continue updating every 5 seconds
     if (navigationActive) {
         setTimeout(updateNavigationProgress, 5000);
@@ -920,7 +920,7 @@ window.stopSimpleNavigation = function () {
     lastRouteUpdateTime = 0;
 
     // Clear info
-    document.getElementById('nearestInfo').innerHTML = 
+    document.getElementById('nearestInfo').innerHTML =
         '<div style="text-align: center; padding: 8px; color: #666;">Chọn điểm trên bản đồ để chỉ đường</div>';
 
     // Re-enable topbar buttons
@@ -1232,10 +1232,10 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
                 console.log('� Route alternatives comparison:');
                 data.routes.forEach((r, i) => {
                     const marker = i === data.routes.indexOf(shortestRoute) ? '✅' : '❌';
-                    console.log(`  ${marker} Route ${i+1}: ${(r.distance/1000).toFixed(1)}km, ${Math.round(r.duration/60)}min`);
+                    console.log(`  ${marker} Route ${i + 1}: ${(r.distance / 1000).toFixed(1)}km, ${Math.round(r.duration / 60)}min`);
                 });
             }
-            
+
             const route = shortestRoute;
             const coordinates = route.geometry.coordinates;
 
@@ -1357,8 +1357,8 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
                     shortestRoute = data.routes[i];
                 }
             }
-            console.log(`🛣️ Found ${data.routes.length} route(s) to PGD, selected shortest: ${(shortestRoute.distance/1000).toFixed(1)}km`);
-            
+            console.log(`🛣️ Found ${data.routes.length} route(s) to PGD, selected shortest: ${(shortestRoute.distance / 1000).toFixed(1)}km`);
+
             const route = shortestRoute;
             const coordinates = route.geometry.coordinates;
             const latlngs = coordinates.map(coord => [coord[1], coord[0]]);
@@ -1473,13 +1473,13 @@ document.getElementById('centerUserBtn').onclick = function () {
 // Initialize map after ready
 map.whenReady(function () {
     console.log('Map ready and initialized');
-    
+
     // Initialize markers after map is ready
     addATMMarkers();
     addPGDMarkers();
-    
+
     updateCompassNeedle();
-    
+
     // Auto show location & compass popup after map is ready
     setTimeout(() => {
         console.log('🚀 Auto showing location & compass popup on startup');
@@ -1665,8 +1665,8 @@ async function recalculateRoute() {
                     shortestRoute = data.routes[i];
                 }
             }
-            console.log(`🔄 Recalculated: Found ${data.routes.length} alternative(s), selected shortest: ${(shortestRoute.distance/1000).toFixed(1)}km`);
-            
+            console.log(`🔄 Recalculated: Found ${data.routes.length} alternative(s), selected shortest: ${(shortestRoute.distance / 1000).toFixed(1)}km`);
+
             const route = shortestRoute;
             currentRoute = route;
             routeCoordinates = route.geometry.coordinates.map(coord => [coord[1], coord[0]]); // Swap lng,lat to lat,lng
