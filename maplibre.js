@@ -231,7 +231,7 @@ function updateUserPosition(position) {
         userMarker.setLngLat([lng, lat]);
 
         // Cập nhật heading rotation
-        const container = userMarker.getElement().querySelector('div');
+        const container = userMarker.getElement().querySelector('div > div');
         if (container) {
             container.style.transform = `rotate(${currentUserHeading}deg)`;
         }
@@ -308,10 +308,14 @@ function startCompassTracking() {
             
             // Update user marker rotation nếu có
             if (userMarker) {
-                const container = userMarker.getElement().querySelector('div');
+                // Tìm div có style rotate (div con đầu tiên)
+                const container = userMarker.getElement().querySelector('div > div');
                 if (container) {
                     container.style.transform = `rotate(${heading}deg)`;
-                    container.style.transition = 'transform 0.3s ease-out';
+                    container.style.transition = 'transform 0.2s ease-out';
+                    console.log(`🎯 User rotated to ${heading.toFixed(1)}° (compass)`);
+                } else {
+                    console.log('⚠️ Could not find user marker container for rotation');
                 }
             }
             
