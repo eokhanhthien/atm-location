@@ -654,7 +654,7 @@ function startSimpleNavigation(destination, route, destinationCoords, distance, 
             </button>
         </div>`;
 
-    document.getElementById('navigationControls').style.display = 'flex';
+    // Map controls are now always visible - no need to show/hide
 
     if (!watchPositionId) {
         startLocationTracking();
@@ -668,7 +668,7 @@ window.stopSimpleNavigation = function () {
     navigationActive = false;
     followMode = false;
 
-    document.getElementById('navigationControls').style.display = 'none';
+    // Map controls are now always visible - no need to show/hide
     stopLocationTracking();
 
     // Xóa cả 2 layer của route
@@ -762,6 +762,10 @@ document.getElementById('showATMBtn').onclick = function () {
     atms.forEach(atm => bounds.extend([atm.lng, atm.lat]));
     map.fitBounds(bounds, { padding: 80, duration: 1500 });
 
+    // Hiển thị gợi ý ATM gần nhất
+    const nearestATM = findNearestATM();
+    showNearestSuggestion('ATM', nearestATM);
+
     this.innerHTML = '✅ Chỉ ATM';
     setTimeout(() => { this.innerHTML = '🏧 ATM'; }, 1500);
 };
@@ -776,72 +780,96 @@ document.getElementById('showPGDBtn').onclick = function () {
     pgds.forEach(pgd => bounds.extend([pgd.lng, pgd.lat]));
     map.fitBounds(bounds, { padding: 80, duration: 1500 });
 
+    // Hiển thị gợi ý PGD gần nhất
+    const nearestPGD = findNearestPGD();
+    showNearestSuggestion('PGD', nearestPGD);
+
     this.innerHTML = '✅ Chỉ PGD';
     setTimeout(() => { this.innerHTML = '🏢 PGD'; }, 1500);
 };
 
-document.getElementById('mapTypeBtn').onclick = function() {
-    if (currentStyle === 'satellite') {
-        // Chuyển sang street map
-        map.getStyle().layers[0].source = 'osm';
-        map.triggerRepaint();
-        currentStyle = 'streets';
-        this.innerHTML = '🛰️ Vệ tinh';
-        this.style.background = '#6c757d';
-        this.title = 'Chuyển về bản đồ vệ tinh';
-    } else {
-        // Chuyển sang satellite
-        map.getStyle().layers[0].source = 'satellite';
-        map.triggerRepaint();
-        currentStyle = 'satellite';
-        this.innerHTML = '🗺️ 2D';
-        this.style.background = '#ff6b35';
-        this.title = 'Chuyển về bản đồ thường';
-    }
-};
+// Helper function to calculate distance between two points (Haversine formula)
+function calculateDistance(start, end) {
+    const toRad = (x) => (x * Math.PI) / 180;
+    const R = 6371; // Earth's radius in km
+    const dLat = toRad(end[1] - start[1]);
+    const dLng = toRad(end[0] - start[0]);
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(start[1])) * Math.cos(toRad(end[1])) *
+        Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+}
 
-document.getElementById('centerCurrentBtn').onclick = function() {
-    if (userMarker) {
-        const lngLat = userMarker.getLngLat();
-        map.flyTo({
-            center: [lngLat.lng, lngLat.lat],
-            zoom: 16,
-            pitch: 0,
-            bearing: 0,
-            duration: 1500
-        });
-        this.innerHTML = '✅ Đã về vị trí';
-        setTimeout(() => {
-            this.innerHTML = '🎯 Về vị trí';
-        }, 2000);
-    } else {
-        alert('Chưa có vị trí hiện tại! Vui lòng bật GPS trước.');
-    }
-};
+// Helper functions for nearest suggestions
+function findNearestATM() {
+    if (!userMarker) return null;
+    
+    const userLngLat = userMarker.getLngLat();
+    let nearestATM = null;
+    let shortestDistance = Infinity;
+    
+    atms.forEach(atm => {
+        const distance = calculateDistance([userLngLat.lng, userLngLat.lat], [atm.lng, atm.lat]);
+        if (distance < shortestDistance) {
+            shortestDistance = distance;
+            nearestATM = { ...atm, distance: distance };
+        }
+    });
+    
+    return nearestATM;
+}
 
-// Thêm sự kiện chuột phải cho nút về vị trí
-document.getElementById('centerCurrentBtn').oncontextmenu = function(e) {
-    e.preventDefault(); // Ngăn menu chuột phải mặc định
-    if (userMarker) {
-        const lngLat = userMarker.getLngLat();
-        // Reset hoàn toàn về vị trí ban đầu với zoom vừa phải
-        map.flyTo({
-            center: [lngLat.lng, lngLat.lat],
-            zoom: 17,
-            pitch: 0,
-            bearing: 0,
-            duration: 2000
-        });
-        this.innerHTML = '🎯 Reset hoàn tất';
-        this.style.background = '#dc3545';
-        setTimeout(() => {
-            this.innerHTML = '🎯 Về vị trí';
-            this.style.background = '#28a745';
-        }, 2000);
-    } else {
-        alert('Chưa có vị trí hiện tại! Vui lòng bật GPS trước.');
+function findNearestPGD() {
+    if (!userMarker) return null;
+    
+    const userLngLat = userMarker.getLngLat();
+    let nearestPGD = null;
+    let shortestDistance = Infinity;
+    
+    pgds.forEach(pgd => {
+        const distance = calculateDistance([userLngLat.lng, userLngLat.lat], [pgd.lng, pgd.lat]);
+        if (distance < shortestDistance) {
+            shortestDistance = distance;
+            nearestPGD = { ...pgd, distance: distance };
+        }
+    });
+    
+    return nearestPGD;
+}
+
+function showNearestSuggestion(type, nearest) {
+    if (!nearest) {
+        document.getElementById('nearestInfo').innerHTML = `
+            <div style="text-align: center; padding: 6px; color: #666; font-size: 0.8em;">
+                Bật vị trí để xem gợi ý ${type} gần nhất
+            </div>
+        `;
+        return;
     }
-};
+    
+    const distanceText = nearest.distance < 1 ? 
+        `${(nearest.distance * 1000).toFixed(0)}m` : 
+        `${nearest.distance.toFixed(1)}km`;
+    
+    document.getElementById('nearestInfo').innerHTML = `
+        <div style="background: rgba(255,255,255,0.95); padding: 6px; border-radius: 4px; border-left: 3px solid ${type === 'ATM' ? '#228B22' : '#47c0f6'}; display: flex; align-items: center; gap: 8px;">
+            <div style="flex: 1;">
+                <div style="font-size: 0.75em; font-weight: bold; color: ${type === 'ATM' ? '#228B22' : '#47c0f6'}; margin-bottom: 2px;">
+                    🎯 ${type} gần nhất (${distanceText})
+                </div>
+                <div style="font-size: 0.7em; color: #333; line-height: 1.2;">
+                    ${nearest.name}
+                </div>
+            </div>
+            <button onclick="${type === 'ATM' ? 'routeToATM' : 'routeToPGD'}(${nearest.lat}, ${nearest.lng}, '${nearest.name}')" 
+                    style="background: ${type === 'ATM' ? '#228B22' : '#47c0f6'}; color: white; border: none; 
+                           padding: 4px 8px; border-radius: 3px; font-size: 0.7em; cursor: pointer; white-space: nowrap;">
+                🚗 Đường
+            </button>
+        </div>
+    `;
+}
 
 function disableTopbarButtons() {
     const buttons = ['showAllBtn', 'showATMBtn', 'showPGDBtn', 'locateBtn'];
@@ -881,12 +909,97 @@ map.on('load', () => {
     }, 1000);
 });
 
-// Set map type button mặc định (satellite)
-const mapTypeBtn = document.getElementById('mapTypeBtn');
-if (mapTypeBtn) {
-    mapTypeBtn.innerHTML = '🗺️ 2D';
-    mapTypeBtn.style.background = '#ff6b35';
-    mapTypeBtn.title = 'Chuyển về bản đồ thường';
+// Restore markers sau khi đổi style
+map.on('styledata', () => {
+    // Re-add markers sau khi style thay đổi
+    setTimeout(() => {
+        if (atmMarkers.length > 0) {
+            atmMarkers.forEach(marker => marker.addTo(map));
+        }
+        if (pgdMarkers.length > 0) {
+            pgdMarkers.forEach(marker => marker.addTo(map));
+        }
+        if (userMarker) {
+            userMarker.addTo(map);
+        }
+    }, 100);
+});
+
+// Nút về vị trí user ở góc phải dưới
+document.getElementById('centerUserBtn').onclick = function() {
+    if (userMarker) {
+        const lngLat = userMarker.getLngLat();
+        map.flyTo({
+            center: [lngLat.lng, lngLat.lat],
+            zoom: 16,
+            pitch: 0,
+            bearing: 0,
+            duration: 1500
+        });
+    } else {
+        alert('Chưa có vị trí hiện tại! Vui lòng bật GPS trước.');
+    }
+};
+
+// Nút satellite toggle ở góc phải dưới
+document.getElementById('satelliteBtn').onclick = function() {
+    if (currentStyle === 'satellite') {
+        // Chuyển sang street map (OpenStreetMap)
+        map.setStyle({
+            version: 8,
+            sources: {
+                'osm': {
+                    type: 'raster',
+                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+                    tileSize: 256,
+                    attribution: '© OpenStreetMap contributors'
+                }
+            },
+            layers: [{
+                id: 'osm',
+                type: 'raster',
+                source: 'osm'
+            }]
+        });
+        currentStyle = 'streets';
+        this.innerHTML = '🛰️';
+        this.classList.remove('active');
+        this.title = 'Chuyển sang bản đồ vệ tinh';
+    } else {
+        // Chuyển sang satellite (Esri World Imagery)
+        map.setStyle({
+            version: 8,
+            sources: {
+                'satellite': {
+                    type: 'raster',
+                    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
+                    tileSize: 256,
+                    attribution: '© Esri, Maxar, Earthstar Geographics'
+                }
+            },
+            layers: [{
+                id: 'satellite',
+                type: 'raster',
+                source: 'satellite'
+            }]
+        });
+        currentStyle = 'satellite';
+        this.innerHTML = '🗺️';
+        this.classList.add('active');
+        this.title = 'Chuyển về bản đồ thường';
+    }
+};
+
+// Khởi tạo trạng thái nút satellite
+const satelliteBtnElement = document.getElementById('satelliteBtn');
+if (satelliteBtnElement && currentStyle === 'satellite') {
+    satelliteBtnElement.innerHTML = '🗺️';
+    satelliteBtnElement.classList.add('active');
+    satelliteBtnElement.title = 'Chuyển về bản đồ thường';
+} else if (satelliteBtnElement) {
+    satelliteBtnElement.innerHTML = '🛰️';
+    satelliteBtnElement.classList.remove('active');
+    satelliteBtnElement.title = 'Chuyển sang bản đồ vệ tinh';
 }
 
 console.log('✅ ATM Location với MapLibre GL JS - Zoom limit: 10-17!');

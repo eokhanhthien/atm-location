@@ -475,8 +475,6 @@
         <button id="showAllBtn" class="btn info">🏢 PGD + ATM</button>
         <button id="showATMBtn" class="btn success">🏧 ATM</button>
         <button id="showPGDBtn" class="btn warning">🏢 PGD</button>
-        <button id="mapTypeBtn" class="btn" style="background:#ff6b35;">🗺️ 2D</button>
-        <button id="centerCurrentBtn" class="btn" style="background:#28a745;" title="Chuột phải để quay về vị trí hiện tại">🎯 Về vị trí</button>
         <div id="nearestInfo">
             <div style="text-align: center; padding: 8px; color: #666;">
                 Chọn điểm trên bản đồ để chỉ đường
@@ -485,9 +483,10 @@
     </div>
 
     
-    <!-- Navigation Controls - Only show during navigation -->
-    <div class="map-controls" id="navigationControls" style="display: none;">
-        <div id="centerUserBtn" class="control-btn" title="Zoom về vị trí hiện tại">📍</div>
+    <!-- Map Controls - Always visible -->
+    <div class="map-controls">
+        <div id="centerUserBtn" class="control-btn" title="Quay về vị trí của tôi">📍</div>
+        <div id="satelliteBtn" class="control-btn" title="Chuyển đổi vệ tinh/bản đồ">�️</div>
     </div>
 
     <!-- Rotation Indicator - DISABLED -->
