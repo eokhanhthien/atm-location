@@ -502,20 +502,72 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
     const userLngLat = userMarker.getLngLat();
 
     try {
-        // OSRM API với format URL đúng
-        console.log('🚗 Trying OSRM routing with correct format...');
-        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLngLat.lng},${userLngLat.lat};${atmLng},${atmLat}?overview=full&geometries=geojson`);
+        // OSRM API với tham số tối ưu cho độ chính xác cao nhất
+        console.log('🚗 Requesting high-accuracy routing from OSRM...');
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${userLngLat.lng},${userLngLat.lat};${atmLng},${atmLat}?` +
+            'overview=full&' +           // Full geometry detail
+            'geometries=geojson&' +      // GeoJSON format 
+            'steps=true&' +              // Turn-by-turn instructions
+            'alternatives=3&' +          // Find up to 3 alternative routes
+            'continue_straight=false&' + // Allow U-turns if needed
+            'annotations=true';          // Speed, duration, distance annotations
+        
+        const response = await fetch(osrmUrl);
         const data = await response.json();
 
         if (data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
+            // Chọn route tốt nhất: ưu tiên shortest distance, sau đó fastest time
+            let bestRoute = data.routes[0];
+            let bestScore = Infinity;
+            
+            console.log(`🛣️ Analyzing ${data.routes.length} route alternative(s):`);
+            
+            data.routes.forEach((route, index) => {
+                const distance = route.distance / 1000; // km
+                const duration = route.duration / 60;   // minutes
+                const score = distance * 0.7 + duration * 0.3; // Weight: 70% distance, 30% time
+                
+                console.log(`Route ${index + 1}: ${distance.toFixed(1)}km, ${Math.round(duration)}min, score: ${score.toFixed(1)}`);
+                
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestRoute = route;
+                }
+            });
+            
+            console.log(`✅ Selected best route: ${(bestRoute.distance/1000).toFixed(1)}km, ${Math.round(bestRoute.duration/60)}min`);
+            
+            const route = bestRoute;
             const coordinates = route.geometry.coordinates;
 
-            // Thêm route vào map - Style như Google Maps
+            // Validate và optimize geometry cho độ chính xác cao
+            console.log(`📍 Route has ${coordinates.length} coordinate points`);
+            
+            // Filter out invalid coordinates và tối ưu hóa số điểm
+            const validCoords = coordinates.filter(coord => 
+                Array.isArray(coord) && 
+                coord.length === 2 && 
+                typeof coord[0] === 'number' && 
+                typeof coord[1] === 'number' &&
+                Math.abs(coord[0]) <= 180 &&
+                Math.abs(coord[1]) <= 90
+            );
+            
+            if (validCoords.length !== coordinates.length) {
+                console.log(`⚠️ Filtered ${coordinates.length - validCoords.length} invalid coordinates`);
+            }
+
+            // Thêm route vào map với geometry đã được validate
             const geojson = {
                 type: 'Feature',
-                properties: {},
-                geometry: route.geometry
+                properties: {
+                    distance: route.distance,
+                    duration: route.duration
+                },
+                geometry: {
+                    type: 'LineString',
+                    coordinates: validCoords
+                }
             };
 
             // Lưu route data để restore sau khi đổi style
@@ -612,13 +664,40 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
     const userLngLat = userMarker.getLngLat();
 
     try {
-        // OSRM API với format URL đúng cho PGD
-        console.log('🚗 Trying OSRM routing for PGD...');
-        const response = await fetch(`https://router.project-osrm.org/route/v1/driving/${userLngLat.lng},${userLngLat.lat};${pgdLng},${pgdLat}?overview=full&geometries=geojson`);
+        // OSRM API với tham số tối ưu cho PGD routing
+        console.log('🚗 Requesting high-accuracy PGD routing...');
+        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${userLngLat.lng},${userLngLat.lat};${pgdLng},${pgdLat}?` +
+            'overview=full&' +           
+            'geometries=geojson&' +      
+            'steps=true&' +              
+            'alternatives=3&' +          
+            'continue_straight=false&' + 
+            'annotations=true';          
+        
+        const response = await fetch(osrmUrl);
         const data = await response.json();
 
         if (data.routes && data.routes.length > 0) {
-            const route = data.routes[0];
+            // Chọn route tốt nhất cho PGD
+            let bestRoute = data.routes[0];
+            let bestScore = Infinity;
+            
+            console.log(`🏢 Analyzing ${data.routes.length} PGD route(s):`);
+            
+            data.routes.forEach((route, index) => {
+                const distance = route.distance / 1000;
+                const duration = route.duration / 60;
+                const score = distance * 0.7 + duration * 0.3;
+                
+                console.log(`PGD Route ${index + 1}: ${distance.toFixed(1)}km, ${Math.round(duration)}min`);
+                
+                if (score < bestScore) {
+                    bestScore = score;
+                    bestRoute = route;
+                }
+            });
+            
+            const route = bestRoute;
 
             // Thêm route vào map - Style như Google Maps
             const geojson = {
@@ -1216,4 +1295,49 @@ if (satelliteBtnElement && currentStyle === 'satellite') {
     satelliteBtnElement.title = 'Chuyển sang bản đồ vệ tinh';
 }
 
-console.log('✅ ATM Location với MapLibre GL JS - Zoom limit: 10-17!');
+// Optimize route geometry for better accuracy
+function optimizeRouteGeometry(coordinates) {
+    if (!Array.isArray(coordinates) || coordinates.length < 2) {
+        return coordinates;
+    }
+    
+    // Remove duplicate consecutive points
+    const optimized = [coordinates[0]];
+    let totalDistance = 0;
+    
+    for (let i = 1; i < coordinates.length; i++) {
+        const prev = coordinates[i - 1];
+        const curr = coordinates[i];
+        
+        // Calculate distance between points
+        const distance = getDistance(prev[1], prev[0], curr[1], curr[0]) * 1000; // meters
+        totalDistance += distance;
+        
+        // Only keep point if it's significant enough (> 5 meters from previous)
+        if (distance > 5 || i === coordinates.length - 1) {
+            optimized.push(curr);
+        }
+    }
+    
+    console.log(`📍 Route optimized: ${coordinates.length} → ${optimized.length} points, total: ${(totalDistance/1000).toFixed(1)}km`);
+    return optimized;
+}
+
+// Enhanced straight line with intermediate points for smoothness  
+function createSmoothStraightLine(start, end, name) {
+    console.log('🔗 Creating smooth straight line from', start, 'to', end);
+    
+    const interpolatePoints = 15; // More points for smoother line
+    const coordinates = [];
+    
+    for (let i = 0; i <= interpolatePoints; i++) {
+        const ratio = i / interpolatePoints;
+        const lng = start[0] + (end[0] - start[0]) * ratio;
+        const lat = start[1] + (end[1] - start[1]) * ratio;
+        coordinates.push([lng, lat]);
+    }
+    
+    return coordinates;
+}
+
+console.log('✅ ATM Location với MapLibre GL JS - High accuracy routing enabled!');
