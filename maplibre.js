@@ -78,6 +78,10 @@ let pendingNavigation = null;
 let currentStyle = 'satellite';
 let compassTracking = false;
 
+// Performance optimization variables for smooth compass rotation  
+let lastOrientationUpdate = 0;
+const ORIENTATION_THROTTLE = 50; // Max 20 FPS for smooth rotation
+
 // Tính bearing từ 2 điểm (để xoay map theo hướng đi)
 function calculateBearing(start, end) {
     const startLat = start[1] * Math.PI / 180;
@@ -123,7 +127,7 @@ function createUserMarkerElement(heading = 0) {
     const el = document.createElement('div');
     el.className = 'user-marker';
     el.innerHTML = `
-        <div style="position:relative;width:32px;height:32px;transform:rotate(${heading}deg);transition:transform 0.3s ease-out;">
+        <div style="position:relative;width:32px;height:32px;transform:rotate(${heading}deg);transform-origin:center center;">
             <div style="position:absolute;width:16px;height:16px;background:#4285F4;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(66,133,244,0.4);top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;"></div>
             <div style="position:absolute;width:30px;height:40px;top:-24px;left:1px;background:linear-gradient(to top,rgba(66,133,244,0.8) 0%,rgba(66,133,244,0.6) 50%,rgba(66,133,244,0.3) 100%);clip-path:polygon(45% 100%,55% 100%,84% 0%,12% 0%);z-index:1;transform-origin:50% 100%;"></div>
         </div>
@@ -282,6 +286,31 @@ function stopLocationTracking() {
 // Global compass handler
 let compassHandler = null;
 
+// Fast CSS transform update (faster than recreating elements)
+function updateUserDirectionFast(heading) {
+    if (userMarker && userMarker.getElement) {
+        const markerElement = userMarker.getElement();
+        if (markerElement) {
+            // Thử nhiều cách tìm container để rotate
+            let container = markerElement.querySelector('div > div'); // Nested div pattern
+            if (!container) {
+                container = markerElement.querySelector('div[style*="transform"]'); // Có transform
+            }
+            if (!container) {
+                container = markerElement.firstElementChild?.firstElementChild; // DOM traversal
+            }
+            
+            if (container) {
+                // Direct CSS transform - fastest method
+                container.style.transform = `rotate(${heading}deg)`;
+                container.style.transition = 'none'; // No transition for realtime
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 // Compass tracking functions
 function startCompassTracking() {
     if (compassTracking) return;
@@ -290,60 +319,91 @@ function startCompassTracking() {
     console.log('🧭 Starting compass tracking...');
     
     compassHandler = (event) => {
+        // Throttle updates for smooth performance (max 20 FPS)
+        const now = performance.now();
+        if (now - lastOrientationUpdate < ORIENTATION_THROTTLE) {
+            return; 
+        }
+        lastOrientationUpdate = now;
+        
+        console.log('🧭 Compass event received:', event);
+        
         let heading = null;
         
-        // iOS uses webkitCompassHeading
-        if (event.webkitCompassHeading !== undefined) {
+        // iOS uses webkitCompassHeading (0-360) 
+        if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
             heading = event.webkitCompassHeading;
-            console.log('🧭 iOS compass:', heading);
+            console.log('🧭 iOS compass heading:', heading);
         }
-        // Android sử dụng alpha (cần calibrate)
-        else if (event.alpha !== null) {
-            heading = 360 - event.alpha; // Đảo ngược cho đúng hướng
-            console.log('🧭 Android compass:', heading);
+        // Android và các browser khác dùng alpha (0-360)
+        else if (event.alpha !== null && event.alpha !== undefined) {
+            // Android: Convert alpha to compass heading (đảo ngược để đúng)
+            heading = (360 - event.alpha + 360) % 360;
+            console.log('🧭 Android compass alpha:', event.alpha, '=> heading:', heading);
         }
         
-        if (heading !== null) {
+        if (heading !== null && !isNaN(heading)) {
             currentUserHeading = heading;
             
-            // Update user marker rotation nếu có
-            if (userMarker) {
-                // Tìm div có style rotate (div con đầu tiên)
-                const container = userMarker.getElement().querySelector('div > div');
-                if (container) {
-                    container.style.transform = `rotate(${heading}deg)`;
-                    container.style.transition = 'transform 0.2s ease-out';
-                    console.log(`🎯 User rotated to ${heading.toFixed(1)}° (compass)`);
-                } else {
-                    console.log('⚠️ Could not find user marker container for rotation');
+            // Use fast CSS method with requestAnimationFrame for smooth updates
+            requestAnimationFrame(() => {
+                if (userMarker) {
+                    // Try fast direct CSS update first
+                    if (!updateUserDirectionFast(heading)) {
+                        console.log('❌ Fast update failed, using fallback...');
+                        // Fallback: recreate marker element (slower but works)
+                        const newElement = createUserMarkerElement(heading);
+                        userMarker.setElement(newElement);
+                    } else {
+                        console.log(`✅ User rotated to ${heading.toFixed(1)}°`);
+                    }
                 }
-            }
+            });
             
-            // Nếu đang navigation, xoay map theo hướng
+            // Nếu đang navigation, xoay map theo hướng (throttled)
             if (navigationActive && followMode) {
-                map.easeTo({
-                    bearing: heading,
-                    duration: 500,
-                    essential: true
-                });
+                clearTimeout(window.mapRotationTimeout);
+                window.mapRotationTimeout = setTimeout(() => {
+                    map.easeTo({
+                        bearing: heading,
+                        duration: 300,
+                        essential: true
+                    });
+                }, 100);
             }
+        } else {
+            console.log('⚠️ Invalid heading:', heading);
         }
     };
     
-    // Add event listener
-    window.addEventListener('deviceorientation', compassHandler);
+    // Add event listeners with passive for better mobile performance
+    window.addEventListener('deviceorientationabsolute', compassHandler, { passive: true }); // Best accuracy
+    window.addEventListener('deviceorientation', compassHandler, { passive: true }); // Fallback
     
-    // Fallback: nếu không có compass sau 3s thì thông báo
+    // Test ngay compass có hoạt động không
+    console.log('🧭 Compass tracking started, testing...');
+    console.log('DeviceOrientationEvent support:', !!window.DeviceOrientationEvent);
+    console.log('Current user heading:', currentUserHeading);
+    
+    // Test fake rotation để debug
+    setTimeout(() => {
+        console.log('🧭 Testing fake rotation...');
+        compassHandler({ alpha: 45, beta: 0, gamma: 0 });
+    }, 1000);
+    
+    // Fallback: nếu không có compass sau 5s thì thông báo
     setTimeout(() => {
         if (currentUserHeading === 0) {
-            console.log('⚠️ Compass not working, using GPS movement for heading');
+            console.log('⚠️ Compass not working after 5s, using GPS movement for heading');
+            console.log('Try moving to test GPS heading calculation');
         }
-    }, 3000);
+    }, 5000);
 }
 
 function stopCompassTracking() {
     compassTracking = false;
     if (compassHandler) {
+        window.removeEventListener('deviceorientationabsolute', compassHandler);
         window.removeEventListener('deviceorientation', compassHandler);
         compassHandler = null;
     }
