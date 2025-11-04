@@ -76,6 +76,7 @@ let routeSourceAdded = false;
 let currentRouteGeojson = null;
 let pendingNavigation = null;
 let currentStyle = 'satellite';
+let compassTracking = false;
 
 // Tính bearing từ 2 điểm (để xoay map theo hướng đi)
 function calculateBearing(start, end) {
@@ -178,8 +179,12 @@ window.enableAllFeaturesAndClose = function () {
             DeviceOrientationEvent.requestPermission().then(response => {
                 if (response === 'granted') {
                     console.log('✅ Compass permission granted');
+                    startCompassTracking();
                 }
             }).catch(console.error);
+        } else {
+            // Android hoặc browser khác - bắt đầu luôn
+            startCompassTracking();
         }
     }
 };
@@ -271,6 +276,72 @@ function stopLocationTracking() {
     if (watchPositionId) {
         navigator.geolocation.clearWatch(watchPositionId);
         watchPositionId = null;
+    }
+}
+
+// Global compass handler
+let compassHandler = null;
+
+// Compass tracking functions
+function startCompassTracking() {
+    if (compassTracking) return;
+    
+    compassTracking = true;
+    console.log('🧭 Starting compass tracking...');
+    
+    compassHandler = (event) => {
+        let heading = null;
+        
+        // iOS uses webkitCompassHeading
+        if (event.webkitCompassHeading !== undefined) {
+            heading = event.webkitCompassHeading;
+            console.log('🧭 iOS compass:', heading);
+        }
+        // Android sử dụng alpha (cần calibrate)
+        else if (event.alpha !== null) {
+            heading = 360 - event.alpha; // Đảo ngược cho đúng hướng
+            console.log('🧭 Android compass:', heading);
+        }
+        
+        if (heading !== null) {
+            currentUserHeading = heading;
+            
+            // Update user marker rotation nếu có
+            if (userMarker) {
+                const container = userMarker.getElement().querySelector('div');
+                if (container) {
+                    container.style.transform = `rotate(${heading}deg)`;
+                    container.style.transition = 'transform 0.3s ease-out';
+                }
+            }
+            
+            // Nếu đang navigation, xoay map theo hướng
+            if (navigationActive && followMode) {
+                map.easeTo({
+                    bearing: heading,
+                    duration: 500,
+                    essential: true
+                });
+            }
+        }
+    };
+    
+    // Add event listener
+    window.addEventListener('deviceorientation', compassHandler);
+    
+    // Fallback: nếu không có compass sau 3s thì thông báo
+    setTimeout(() => {
+        if (currentUserHeading === 0) {
+            console.log('⚠️ Compass not working, using GPS movement for heading');
+        }
+    }, 3000);
+}
+
+function stopCompassTracking() {
+    compassTracking = false;
+    if (compassHandler) {
+        window.removeEventListener('deviceorientation', compassHandler);
+        compassHandler = null;
     }
 }
 
