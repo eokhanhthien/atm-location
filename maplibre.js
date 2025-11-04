@@ -241,23 +241,15 @@ function updateUserPosition(position) {
         }
     }
 
-    // Follow mode với animation mượt - như Google Maps
-    if (followMode || navigationActive) {
-        // Khi navigation, xoay map theo hướng user đang di chuyển
-        if (navigationActive && heading !== null && heading !== undefined) {
-            map.easeTo({
-                center: [lng, lat],
-                bearing: heading,
-                duration: 800,
-                essential: true
-            });
-        } else {
-            map.easeTo({
-                center: [lng, lat],
-                duration: 800,
-                essential: true
-            });
-        }
+    // Bỏ auto follow - user có thể xoay map tự do
+    // Follow mode chỉ hoạt động khi user bật thủ công, không tự động trong navigation
+    if (followMode && !navigationActive) {
+        // Chỉ follow khi user bật thủ công và không đang navigation
+        map.easeTo({
+            center: [lng, lat],
+            duration: 800,
+            essential: true
+        });
     }
 
     // Thực hiện navigation đang chờ
@@ -326,20 +318,23 @@ function startCompassTracking() {
         }
         lastOrientationUpdate = now;
         
-        console.log('🧭 Compass event received:', event);
+        // Chỉ log khi có data thực sự
+        if (event.alpha !== null || event.webkitCompassHeading !== undefined) {
+            console.log('🧭 Compass event - alpha:', event.alpha, 'webkit:', event.webkitCompassHeading);
+        }
         
         let heading = null;
         
         // iOS uses webkitCompassHeading (0-360) 
-        if (event.webkitCompassHeading !== undefined && event.webkitCompassHeading !== null) {
+        if (typeof event.webkitCompassHeading === 'number' && !isNaN(event.webkitCompassHeading)) {
             heading = event.webkitCompassHeading;
-            console.log('🧭 iOS compass heading:', heading);
+            console.log('🍎 iOS compass:', heading.toFixed(1) + '°');
         }
         // Android và các browser khác dùng alpha (0-360)
-        else if (event.alpha !== null && event.alpha !== undefined) {
+        else if (typeof event.alpha === 'number' && !isNaN(event.alpha)) {
             // Android: Convert alpha to compass heading (đảo ngược để đúng)
             heading = (360 - event.alpha + 360) % 360;
-            console.log('🧭 Android compass alpha:', event.alpha, '=> heading:', heading);
+            console.log('� Android alpha:', event.alpha.toFixed(1) + '° => heading:', heading.toFixed(1) + '°');
         }
         
         if (heading !== null && !isNaN(heading)) {
@@ -360,19 +355,14 @@ function startCompassTracking() {
                 }
             });
             
-            // Nếu đang navigation, xoay map theo hướng (throttled)
-            if (navigationActive && followMode) {
-                clearTimeout(window.mapRotationTimeout);
-                window.mapRotationTimeout = setTimeout(() => {
-                    map.easeTo({
-                        bearing: heading,
-                        duration: 300,
-                        essential: true
-                    });
-                }, 100);
-            }
+            // Bỏ auto rotation map - user có thể xoay tự do khi navigation
+            // Map không tự động xoay theo compass nữa
         } else {
-            console.log('⚠️ Invalid heading:', heading);
+            // Không log invalid heading quá nhiều để tránh spam console
+            if (heading !== null) {
+                console.log('⚠️ Invalid heading:', heading);
+            }
+            // Compass có thể chưa sẵn sàng, tiếp tục lắng nghe
         }
     };
     
@@ -385,19 +375,24 @@ function startCompassTracking() {
     console.log('DeviceOrientationEvent support:', !!window.DeviceOrientationEvent);
     console.log('Current user heading:', currentUserHeading);
     
-    // Test fake rotation để debug
+    // Test với fake compass data
     setTimeout(() => {
-        console.log('🧭 Testing fake rotation...');
-        compassHandler({ alpha: 45, beta: 0, gamma: 0 });
+        console.log('� Testing compass với fake data...');
+        compassHandler({ alpha: 90, beta: 0, gamma: 0 });
     }, 1000);
     
-    // Fallback: nếu không có compass sau 5s thì thông báo
+    // Kiểm tra compass sau 3s và đưa ra hướng dẫn
     setTimeout(() => {
         if (currentUserHeading === 0) {
-            console.log('⚠️ Compass not working after 5s, using GPS movement for heading');
-            console.log('Try moving to test GPS heading calculation');
+            console.log('⚠️ Compass chưa hoạt động. Nguyên nhân có thể:');
+            console.log('1. 🔐 iOS: Chưa cấp quyền DeviceOrientation');
+            console.log('2. 🌐 Cần HTTPS để compass hoạt động'); 
+            console.log('3. 📱 Thiết bị không có magnetometer');
+            console.log('💡 Thử di chuyển để test GPS heading');
+        } else {
+            console.log('✅ Compass OK! Heading:', currentUserHeading.toFixed(1) + '°');
         }
-    }, 5000);
+    }, 3000);
 }
 
 function stopCompassTracking() {
@@ -580,10 +575,10 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
             // Tính bearing từ user đến destination
             const bearing = calculateBearing(userPos, destPos);
             
-            // Zoom về user với hướng nhìn theo route
+            // Zoom sâu về user như Google Maps - ATM
             map.flyTo({
                 center: userPos,
-                zoom: 16,
+                zoom: 18.5, // Zoom sâu hơn như Google Maps
                 bearing: bearing,
                 pitch: 45,
                 duration: 2000
@@ -688,10 +683,10 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
             // Tính bearing từ user đến destination
             const bearing = calculateBearing(userPos, destPos);
             
-            // Zoom về user với hướng nhìn theo route
+            // Zoom sâu về user như Google Maps - PGD
             map.flyTo({
                 center: userPos,
-                zoom: 16,
+                zoom: 18.5, // Zoom sâu hơn như Google Maps
                 bearing: bearing,
                 pitch: 45,
                 duration: 2000
@@ -828,7 +823,8 @@ function startSimpleNavigation(destination, route, destinationCoords, distance, 
         startLocationTracking();
     }
 
-    followMode = true;
+    // Không auto follow - user có thể xoay map tự do
+    followMode = false;
     disableTopbarButtons();
 }
 
