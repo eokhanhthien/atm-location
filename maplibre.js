@@ -82,6 +82,10 @@ let compassTracking = false;
 let lastOrientationUpdate = 0;
 const ORIENTATION_THROTTLE = 50; // Max 20 FPS for smooth rotation
 
+// Progressive route throttling
+let lastRouteUpdate = 0;
+const ROUTE_UPDATE_THROTTLE = 2000; // Max 1 update per 2 seconds
+
 // Tính bearing từ 2 điểm (để xoay map theo hướng đi)
 function calculateBearing(start, end) {
     const startLat = start[1] * Math.PI / 180;
@@ -287,6 +291,31 @@ function stopLocationTracking() {
 // Global compass handler
 let compassHandler = null;
 
+// Smooth heading filter để tránh compass giật
+function smoothHeading(newHeading, currentHeading) {
+    if (currentHeading === null || currentHeading === undefined || currentHeading === 0) {
+        return newHeading; // First reading
+    }
+    
+    // Handle 360° wrap-around (0° và 360° là cùng hướng)
+    let diff = newHeading - currentHeading;
+    
+    // Normalize difference to [-180, 180]
+    while (diff > 180) diff -= 360;
+    while (diff < -180) diff += 360;
+    
+    // Nếu thay đổi quá lớn (>30°) thì có thể là noise
+    if (Math.abs(diff) > 30) {
+        // Giảm tác động của change lớn
+        const smoothFactor = 0.3; // 30% của change
+        return (currentHeading + diff * smoothFactor + 360) % 360;
+    } else {
+        // Thay đổi bình thường - smooth interpolation
+        const smoothFactor = 0.7; // 70% smooth
+        return (currentHeading + diff * smoothFactor + 360) % 360;
+    }
+}
+
 // Fast CSS transform update (faster than recreating elements)
 function updateUserDirectionFast(heading) {
     if (userMarker && userMarker.getElement) {
@@ -351,19 +380,21 @@ function startCompassTracking() {
         }
         
         if (heading !== null && !isNaN(heading)) {
-            currentUserHeading = heading;
+            // Smooth heading để tránh giật - low-pass filter
+            const smoothedHeading = smoothHeading(heading, currentUserHeading);
+            currentUserHeading = smoothedHeading;
             
             // Use fast CSS method with requestAnimationFrame for smooth updates
             requestAnimationFrame(() => {
                 if (userMarker) {
                     // Try fast direct CSS update first
-                    if (!updateUserDirectionFast(heading)) {
+                    if (!updateUserDirectionFast(smoothedHeading)) {
                         console.log('❌ Fast update failed, using fallback...');
                         // Fallback: recreate marker element (slower but works)
-                        const newElement = createUserMarkerElement(heading);
+                        const newElement = createUserMarkerElement(smoothedHeading);
                         userMarker.setElement(newElement);
                     } else {
-                        console.log(`✅ User rotated to ${heading.toFixed(1)}°`);
+                        console.log(`✅ User rotated to ${smoothedHeading.toFixed(1)}°`);
                     }
                 }
             });
@@ -1363,6 +1394,12 @@ function createSmoothStraightLine(start, end, name) {
 
 // Progressive route - ẩn phần đã đi qua
 function updateProgressiveRoute(userLat, userLng) {
+    // Throttle route updates để tránh spam
+    const now = Date.now();
+    if (now - lastRouteUpdate < ROUTE_UPDATE_THROTTLE) {
+        return;
+    }
+    
     if (!currentRouteGeojson || !currentRouteGeojson.geometry || !currentRouteGeojson.geometry.coordinates) {
         return;
     }
@@ -1384,9 +1421,11 @@ function updateProgressiveRoute(userLat, userLng) {
         }
     }
 
-    // Nếu user đã đi qua > 50% route thì cắt bỏ phần đã qua
+    // Progressive route - cắt phần đã đi qua ngay khi user di chuyển
     const passedRatio = closestIndex / coords.length;
-    if (passedRatio > 0.1 && minDistance < 100) { // 10% route và trong 100m
+    
+    // Điều kiện cắt route: đã đi >5% và trong 50m từ route
+    if (passedRatio > 0.05 && minDistance < 50) { // 5% route và trong 50m (sensitive hơn)
         // Tạo route mới chỉ từ vị trí hiện tại đến cuối
         const remainingCoords = coords.slice(Math.max(0, closestIndex - 2)); // Giữ lại 2 điểm trước để mượt
         
@@ -1403,11 +1442,17 @@ function updateProgressiveRoute(userLat, userLng) {
             // Cập nhật route trên map
             if (map.getSource('route')) {
                 map.getSource('route').setData(updatedGeojson);
-                console.log(`🛣️ Progressive route: ${passedRatio.toFixed(1)*100}% completed, ${remainingCoords.length} points remaining`);
+                console.log(`🛣️ Route updated: ${(passedRatio*100).toFixed(1)}% completed, ${coords.length}→${remainingCoords.length} points, ${minDistance.toFixed(0)}m from route`);
+                lastRouteUpdate = now; // Update throttle timestamp
             }
             
             // Cập nhật stored route
             currentRouteGeojson = updatedGeojson;
+        }
+    } else {
+        // Debug info khi không cắt route
+        if (minDistance < 200) { // Chỉ log khi gần route
+            console.log(`🛣️ No cut: ${(passedRatio*100).toFixed(1)}% progress, ${minDistance.toFixed(0)}m from route`);
         }
     }
 }
