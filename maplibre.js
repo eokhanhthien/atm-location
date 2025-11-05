@@ -124,10 +124,14 @@ function createPGDMarkerElement() {
 
 // Tạo marker element cho user location
 function createUserMarkerElement(heading = 0) {
+    // Compensate for map rotation when creating element
+    const mapBearing = map.getBearing() || 0;
+    const correctedHeading = heading - mapBearing;
+    
     const el = document.createElement('div');
     el.className = 'user-marker';
     el.innerHTML = `
-        <div style="position:relative;width:32px;height:32px;transform:rotate(${heading}deg);transform-origin:center center;">
+        <div style="position:relative;width:32px;height:32px;transform:rotate(${correctedHeading}deg);transform-origin:center center;">
             <div style="position:absolute;width:16px;height:16px;background:#4285F4;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(66,133,244,0.4);top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;"></div>
             <div style="position:absolute;width:30px;height:40px;top:-24px;left:1px;background:linear-gradient(to top,rgba(66,133,244,0.8) 0%,rgba(66,133,244,0.6) 50%,rgba(66,133,244,0.3) 100%);clip-path:polygon(45% 100%,55% 100%,84% 0%,12% 0%);z-index:1;transform-origin:50% 100%;"></div>
         </div>
@@ -252,6 +256,11 @@ function updateUserPosition(position) {
         });
     }
 
+    // Progressive route - ẩn phần đã đi qua khi navigation
+    if (navigationActive && currentRouteGeojson) {
+        updateProgressiveRoute(lat, lng);
+    }
+
     // Thực hiện navigation đang chờ
     if (pendingNavigation) {
         executePendingNavigation();
@@ -293,8 +302,12 @@ function updateUserDirectionFast(heading) {
             }
             
             if (container) {
+                // Compensate for map rotation - compass luôn chỉ đúng hướng thật
+                const mapBearing = map.getBearing() || 0;
+                const correctedHeading = heading - mapBearing;
+                
                 // Direct CSS transform - fastest method
-                container.style.transform = `rotate(${heading}deg)`;
+                container.style.transform = `rotate(${correctedHeading}deg)`;
                 container.style.transition = 'none'; // No transition for realtime
                 return true;
             }
@@ -1145,6 +1158,14 @@ map.on('load', () => {
     addATMMarkers();
     addPGDMarkers();
 
+    // Listen for map rotation để update compass
+    map.on('rotate', () => {
+        // Khi map xoay, cập nhật lại compass direction
+        if (userMarker && currentUserHeading !== null) {
+            updateUserDirectionFast(currentUserHeading);
+        }
+    });
+
     // Hiển thị popup sau 1 giây
     setTimeout(() => {
         if (!userMarker) {
@@ -1340,4 +1361,55 @@ function createSmoothStraightLine(start, end, name) {
     return coordinates;
 }
 
-console.log('✅ ATM Location với MapLibre GL JS - High accuracy routing enabled!');
+// Progressive route - ẩn phần đã đi qua
+function updateProgressiveRoute(userLat, userLng) {
+    if (!currentRouteGeojson || !currentRouteGeojson.geometry || !currentRouteGeojson.geometry.coordinates) {
+        return;
+    }
+
+    const coords = currentRouteGeojson.geometry.coordinates;
+    if (coords.length < 2) return;
+
+    // Tìm điểm gần nhất trên route
+    let closestIndex = 0;
+    let minDistance = Infinity;
+
+    for (let i = 0; i < coords.length; i++) {
+        const [lng, lat] = coords[i];
+        const distance = getDistance(userLat, userLng, lat, lng) * 1000; // meters
+        
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestIndex = i;
+        }
+    }
+
+    // Nếu user đã đi qua > 50% route thì cắt bỏ phần đã qua
+    const passedRatio = closestIndex / coords.length;
+    if (passedRatio > 0.1 && minDistance < 100) { // 10% route và trong 100m
+        // Tạo route mới chỉ từ vị trí hiện tại đến cuối
+        const remainingCoords = coords.slice(Math.max(0, closestIndex - 2)); // Giữ lại 2 điểm trước để mượt
+        
+        if (remainingCoords.length >= 2) {
+            const updatedGeojson = {
+                type: 'Feature',
+                properties: currentRouteGeojson.properties || {},
+                geometry: {
+                    type: 'LineString',
+                    coordinates: remainingCoords
+                }
+            };
+
+            // Cập nhật route trên map
+            if (map.getSource('route')) {
+                map.getSource('route').setData(updatedGeojson);
+                console.log(`🛣️ Progressive route: ${passedRatio.toFixed(1)*100}% completed, ${remainingCoords.length} points remaining`);
+            }
+            
+            // Cập nhật stored route
+            currentRouteGeojson = updatedGeojson;
+        }
+    }
+}
+
+console.log('✅ ATM Location với MapLibre GL JS - High accuracy routing + Progressive route enabled!');
