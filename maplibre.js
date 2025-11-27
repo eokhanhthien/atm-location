@@ -86,6 +86,10 @@ const ORIENTATION_THROTTLE = 50; // Max 20 FPS for smooth rotation
 let lastRouteUpdate = 0;
 const ROUTE_UPDATE_THROTTLE = 2000; // Max 1 update per 2 seconds
 
+// GPS smoothing variables
+let lastValidGPS = null;
+const GPS_ACCURACY_THRESHOLD = 200; // meters - reject readings worse than this (more realistic)
+
 // Tính bearing từ 2 điểm (để xoay map theo hướng đi)
 function calculateBearing(start, end) {
     const startLat = start[1] * Math.PI / 180;
@@ -205,44 +209,68 @@ window.enableAllFeaturesAndClose = function () {
 function updateUserPosition(position) {
     const lat = position.coords.latitude;
     const lng = position.coords.longitude;
+    const accuracy = position.coords.accuracy || 999;
     let heading = position.coords.heading;
 
-    // Tính heading từ chuyển động nếu GPS không có
+    // GPS Validation - Filter bad readings
+    if (!isValidGPSCoordinate(lat, lng, accuracy)) {
+        console.log(`⚠️ GPS filtered: lat=${lat}, lng=${lng}, accuracy=${accuracy}m`);
+        
+        // If we have no GPS for too long, show message
+        if (!lastValidGPS || (Date.now() - lastValidGPS.timestamp) > 15000) {
+            console.log('📍 Poor GPS signal - try moving to open area or near window');
+        }
+        return; // Skip this update
+    }
+
+    // Log GPS quality cho debug
+    if (accuracy <= 50) {
+        console.log(`📍 Good GPS: ${accuracy}m accuracy`);
+    } else if (accuracy <= 100) {
+        console.log(`📍 OK GPS: ${accuracy}m accuracy`);
+    } else {
+        console.log(`📍 Poor GPS: ${accuracy}m accuracy (accepted)`);
+    }
+
+    // Smooth GPS position để tránh nhảy lung tung
+    const smoothedPosition = smoothGPSPosition(lat, lng, lastPosition);
+
+    // Tính heading từ chuyển động nếu GPS không có (dùng smoothed position)
     if ((heading === null || heading === undefined) && lastPosition) {
-        const dLng = lng - lastPosition.lng;
-        const dLat = lat - lastPosition.lat;
+        const dLng = smoothedPosition.lng - lastPosition.lng;
+        const dLat = smoothedPosition.lat - lastPosition.lat;
         if (Math.abs(dLng) > 0.00001 || Math.abs(dLat) > 0.00001) {
             heading = (Math.atan2(dLng, dLat) * 180 / Math.PI + 360) % 360;
         }
     }
 
-    lastPosition = { lat, lng };
+    lastPosition = { lat: smoothedPosition.lat, lng: smoothedPosition.lng };
     if (heading !== null && heading !== undefined) {
         currentUserHeading = heading;
     }
 
-    // Tạo hoặc cập nhật user marker
+    // Tạo hoặc cập nhật user marker (dùng smoothed position)
     if (!userMarker) {
         const el = createUserMarkerElement(currentUserHeading);
         userMarker = new maplibregl.Marker({
             element: el,
             anchor: 'center'
         })
-            .setLngLat([lng, lat])
+            .setLngLat([smoothedPosition.lng, smoothedPosition.lat])
             .addTo(map);
 
-        // Center lần đầu với animation mượt
+        // Center lần đầu với animation mượt (dùng smoothed position)
         map.flyTo({
-            center: [lng, lat],
+            center: [smoothedPosition.lng, smoothedPosition.lat],
             zoom: 16,
             duration: 1500,
             essential: true
         });
     } else {
-        // Cập nhật vị trí và hướng
-        userMarker.setLngLat([lng, lat]);
+        // Cập nhật vị trí và hướng (dùng smoothed position)
+        userMarker.setLngLat([smoothedPosition.lng, smoothedPosition.lat]);
 
-        // Cập nhật heading rotation
+        // Cập nhật heading rotation (sẽ được handle bởi compass tracking)
         const container = userMarker.getElement().querySelector('div > div');
         if (container) {
             container.style.transform = `rotate(${currentUserHeading}deg)`;
@@ -254,15 +282,15 @@ function updateUserPosition(position) {
     if (followMode && !navigationActive) {
         // Chỉ follow khi user bật thủ công và không đang navigation
         map.easeTo({
-            center: [lng, lat],
+            center: [smoothedPosition.lng, smoothedPosition.lat],
             duration: 800,
             essential: true
         });
     }
 
-    // Progressive route - ẩn phần đã đi qua khi navigation
+    // Progressive route - ẩn phần đã đi qua khi navigation (dùng smoothed position)
     if (navigationActive && currentRouteGeojson) {
-        updateProgressiveRoute(lat, lng);
+        updateProgressiveRoute(smoothedPosition.lat, smoothedPosition.lng);
     }
 
     // Thực hiện navigation đang chờ
@@ -273,11 +301,29 @@ function updateUserPosition(position) {
 
 function startLocationTracking() {
     if (navigator.geolocation && !watchPositionId) {
+        // Optimized GPS options cho stability và accuracy
+        const gpsOptions = {
+            enableHighAccuracy: true,    // Bật GPS chính xác  
+            maximumAge: 2000,            // Cache 2s để GPS có thời gian lock tốt hơn
+            timeout: 12000               // Timeout dài hơn cho GPS quality cao
+        };
+        
         watchPositionId = navigator.geolocation.watchPosition(
             updateUserPosition,
-            (error) => console.error('Location error:', error),
-            { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
+            (error) => {
+                console.error('GPS Error:', error.message);
+                // Retry mechanism cho GPS errors
+                if (error.code === error.TIMEOUT) {
+                    console.log('GPS timeout, retrying...');
+                    setTimeout(() => {
+                        if (!watchPositionId) startLocationTracking();
+                    }, 2000);
+                }
+            },
+            gpsOptions
         );
+        
+        console.log('📍 GPS tracking started with stability filters');
     }
 }
 
@@ -304,16 +350,91 @@ function smoothHeading(newHeading, currentHeading) {
     while (diff > 180) diff -= 360;
     while (diff < -180) diff += 360;
     
-    // Nếu thay đổi quá lớn (>30°) thì có thể là noise
-    if (Math.abs(diff) > 30) {
-        // Giảm tác động của change lớn
+    // Aggressive smoothing để tránh compass nhảy lung tung
+    if (Math.abs(diff) > 45) {
+        // Thay đổi rất lớn (>45°) = có thể noise hoặc user xoay nhanh
+        const smoothFactor = 0.1; // Chỉ 10% của change để tránh shock
+        return (currentHeading + diff * smoothFactor + 360) % 360;
+    } else if (Math.abs(diff) > 15) {
+        // Thay đổi trung bình (15-45°)
         const smoothFactor = 0.3; // 30% của change
         return (currentHeading + diff * smoothFactor + 360) % 360;
     } else {
-        // Thay đổi bình thường - smooth interpolation
-        const smoothFactor = 0.7; // 70% smooth
+        // Thay đổi nhỏ (<15°) - smooth bình thường
+        const smoothFactor = 0.6; // 60% smooth
         return (currentHeading + diff * smoothFactor + 360) % 360;
     }
+}
+
+// GPS validation và smoothing functions
+function isValidGPSCoordinate(lat, lng, accuracy) {
+    // Basic coordinate validation
+    if (typeof lat !== 'number' || typeof lng !== 'number' || 
+        isNaN(lat) || isNaN(lng) ||
+        lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+        return false;
+    }
+    
+    // Dynamic accuracy filter - more lenient if no good GPS available
+    let threshold = GPS_ACCURACY_THRESHOLD;
+    if (!lastValidGPS) {
+        // First GPS reading - be more accepting
+        threshold = 300; // 300m for first reading
+    } else {
+        // If last GPS was poor, accept similar quality
+        const timeSinceLastGPS = Date.now() - lastValidGPS.timestamp;
+        if (timeSinceLastGPS > 10000) { // 10 seconds without GPS
+            threshold = 300; // Be more lenient after GPS loss
+        }
+    }
+    
+    if (accuracy > threshold) {
+        console.log(`📍 GPS accuracy ${accuracy}m > ${threshold}m threshold - rejected`);
+        return false;
+    }
+    
+    // Detect impossible jumps (>500m in 1 second = >1800km/h)
+    if (lastValidGPS) {
+        const distance = getDistance(lat, lng, lastValidGPS.lat, lastValidGPS.lng) * 1000; // meters
+        const timeElapsed = Date.now() - lastValidGPS.timestamp; // ms
+        const speed = distance / (timeElapsed / 1000) * 3.6; // km/h
+        
+        if (speed > 200) { // 200 km/h max reasonable speed
+            console.log(`🚗 Speed filter: ${speed.toFixed(0)} km/h too fast, rejecting GPS`);
+            return false;
+        }
+    }
+    
+    return true;
+}
+
+function smoothGPSPosition(lat, lng, lastPos) {
+    // First reading or no smoothing needed
+    if (!lastPos || !lastValidGPS) {
+        lastValidGPS = { lat, lng, timestamp: Date.now() };
+        return { lat, lng };
+    }
+    
+    // Calculate distance moved
+    const distance = getDistance(lat, lng, lastPos.lat, lastPos.lng) * 1000; // meters
+    
+    // If movement is very small (<2m), smooth more aggressively to reduce jitter
+    if (distance < 2) {
+        const smoothFactor = 0.3; // Use only 30% of new reading
+        const smoothedLat = lastPos.lat + (lat - lastPos.lat) * smoothFactor;
+        const smoothedLng = lastPos.lng + (lng - lastPos.lng) * smoothFactor;
+        
+        lastValidGPS = { lat: smoothedLat, lng: smoothedLng, timestamp: Date.now() };
+        return { lat: smoothedLat, lng: smoothedLng };
+    }
+    
+    // Normal movement - light smoothing
+    const smoothFactor = 0.7;
+    const smoothedLat = lastPos.lat + (lat - lastPos.lat) * smoothFactor;
+    const smoothedLng = lastPos.lng + (lng - lastPos.lng) * smoothFactor;
+    
+    lastValidGPS = { lat: smoothedLat, lng: smoothedLng, timestamp: Date.now() };
+    return { lat: smoothedLat, lng: smoothedLng };
 }
 
 // Fast CSS transform update (faster than recreating elements)
@@ -537,296 +658,57 @@ function clearAllMarkers() {
 
 // Chỉ đường đến ATM với OpenRouteService miễn phí
 window.routeToATM = async function (atmLat, atmLng, atmName) {
+    // Nếu chưa có vị trí người dùng, lưu pending và yêu cầu bật vị trí
     if (!userMarker) {
         alert('Vui lòng bật vị trí trước!');
         pendingNavigation = { type: 'atm', lat: atmLat, lng: atmLng, name: atmName };
         return;
     }
 
-    const userLngLat = userMarker.getLngLat();
-
+    // Mở Google Maps trực tiếp thay vì vẽ line trong app
     try {
-        // OSRM API với tham số tối ưu cho độ chính xác cao nhất
-        console.log('🚗 Requesting high-accuracy routing from OSRM...');
-        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${userLngLat.lng},${userLngLat.lat};${atmLng},${atmLat}?` +
-            'overview=full&' +           // Full geometry detail
-            'geometries=geojson&' +      // GeoJSON format 
-            'steps=true&' +              // Turn-by-turn instructions
-            'alternatives=3&' +          // Find up to 3 alternative routes
-            'continue_straight=false&' + // Allow U-turns if needed
-            'annotations=true';          // Speed, duration, distance annotations
-        
-        const response = await fetch(osrmUrl);
-        const data = await response.json();
+        const userLngLat = userMarker.getLngLat();
+        const origin = `${userLngLat.lat},${userLngLat.lng}`;
+        const destination = `${atmLat},${atmLng}`;
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
 
-        if (data.routes && data.routes.length > 0) {
-            // Chọn route tốt nhất: ưu tiên shortest distance, sau đó fastest time
-            let bestRoute = data.routes[0];
-            let bestScore = Infinity;
-            
-            console.log(`🛣️ Analyzing ${data.routes.length} route alternative(s):`);
-            
-            data.routes.forEach((route, index) => {
-                const distance = route.distance / 1000; // km
-                const duration = route.duration / 60;   // minutes
-                const score = distance * 0.7 + duration * 0.3; // Weight: 70% distance, 30% time
-                
-                console.log(`Route ${index + 1}: ${distance.toFixed(1)}km, ${Math.round(duration)}min, score: ${score.toFixed(1)}`);
-                
-                if (score < bestScore) {
-                    bestScore = score;
-                    bestRoute = route;
-                }
-            });
-            
-            console.log(`✅ Selected best route: ${(bestRoute.distance/1000).toFixed(1)}km, ${Math.round(bestRoute.duration/60)}min`);
-            
-            const route = bestRoute;
-            const coordinates = route.geometry.coordinates;
+        // Mở trong tab mới - trên mobile sẽ mở app nếu có
+        window.open(url, '_blank');
 
-            // Validate và optimize geometry cho độ chính xác cao
-            console.log(`📍 Route has ${coordinates.length} coordinate points`);
-            
-            // Filter out invalid coordinates và tối ưu hóa số điểm
-            const validCoords = coordinates.filter(coord => 
-                Array.isArray(coord) && 
-                coord.length === 2 && 
-                typeof coord[0] === 'number' && 
-                typeof coord[1] === 'number' &&
-                Math.abs(coord[0]) <= 180 &&
-                Math.abs(coord[1]) <= 90
-            );
-            
-            if (validCoords.length !== coordinates.length) {
-                console.log(`⚠️ Filtered ${coordinates.length - validCoords.length} invalid coordinates`);
-            }
+        // Optionally provide a quick haptic feedback on supported devices
+        if ('vibrate' in navigator) navigator.vibrate(100);
 
-            // Thêm route vào map với geometry đã được validate
-            const geojson = {
-                type: 'Feature',
-                properties: {
-                    distance: route.distance,
-                    duration: route.duration
-                },
-                geometry: {
-                    type: 'LineString',
-                    coordinates: validCoords
-                }
-            };
-
-            // Lưu route data để restore sau khi đổi style
-            currentRouteGeojson = geojson;
-
-            // Xóa route cũ nếu có
-            if (map.getSource('route')) {
-                if (map.getLayer('route-background')) map.removeLayer('route-background');
-                if (map.getLayer('route')) map.removeLayer('route');
-                map.removeSource('route');
-            }
-
-            map.addSource('route', {
-                type: 'geojson',
-                data: geojson
-            });
-
-            // Route background - viền ngoài đậm
-            map.addLayer({
-                id: 'route-background',
-                type: 'line',
-                source: 'route',
-                layout: {
-                    'line-join': 'round',
-                    'line-cap': 'round'
-                },
-                paint: {
-                    'line-color': '#1557b0',
-                    'line-width': 10,
-                    'line-opacity': 0.8
-                }
-            });
-            
-            // Route main - đường chính như Google Maps
-            map.addLayer({
-                id: 'route',
-                type: 'line',
-                source: 'route',
-                layout: {
-                    'line-join': 'round',
-                    'line-cap': 'round'
-                },
-                paint: {
-                    'line-color': '#4285F4',
-                    'line-width': 7,
-                    'line-opacity': 1
-                }
-            });
-
-            routeSourceAdded = true;
-            console.log('✅ Route ATM được tạo thành công với', coordinates.length, 'điểm');
-
-            // Zoom về user với bearing theo hướng đi
-            const userPos = [userLngLat.lng, userLngLat.lat];
-            const destPos = [atmLng, atmLat];
-            
-            // Tính bearing từ user đến destination
-            const bearing = calculateBearing(userPos, destPos);
-            
-            // Zoom sâu về user như Google Maps - ATM
-            map.flyTo({
-                center: userPos,
-                zoom: 18.5, // Zoom sâu hơn như Google Maps
-                bearing: bearing,
-                pitch: 45,
-                duration: 2000
-            });
-
-            // Bắt đầu navigation
-            const distance = (route.distance / 1000).toFixed(1);
-            const duration = Math.round(route.duration / 60);
-
-            startSimpleNavigation(atmName, route, { lat: atmLat, lng: atmLng }, distance, duration);
-
-        } else {
-            console.log('Không có route data, vẽ đường thẳng');
-            drawStraightLine([userLngLat.lng, userLngLat.lat], [atmLng, atmLat], atmName);
-        }
-    } catch (error) {
-        console.error('Routing error:', error);
-        // Fallback: vẽ đường thẳng
-        drawStraightLine([userLngLat.lng, userLngLat.lat], [atmLng, atmLat], atmName);
+        // Clear any pending navigation (we've handed off to Google Maps)
+        pendingNavigation = null;
+        return;
+    } catch (err) {
+        console.error('Failed to open Google Maps, falling back to in-app routing', err);
+        // Nếu lỗi, fallback về logic cũ (vẽ route)
     }
 };
 
 // Chỉ đường đến PGD
 window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
+    // Nếu chưa có vị trí user
     if (!userMarker) {
         alert('Vui lòng bật vị trí trước!');
         pendingNavigation = { type: 'pgd', lat: pgdLat, lng: pgdLng, name: pgdName };
         return;
     }
 
-    const userLngLat = userMarker.getLngLat();
-
+    // Mở Google Maps với chỉ đường từ vị trí hiện tại đến PGD
     try {
-        // OSRM API với tham số tối ưu cho PGD routing
-        console.log('🚗 Requesting high-accuracy PGD routing...');
-        const osrmUrl = `https://router.project-osrm.org/route/v1/driving/${userLngLat.lng},${userLngLat.lat};${pgdLng},${pgdLat}?` +
-            'overview=full&' +           
-            'geometries=geojson&' +      
-            'steps=true&' +              
-            'alternatives=3&' +          
-            'continue_straight=false&' + 
-            'annotations=true';          
-        
-        const response = await fetch(osrmUrl);
-        const data = await response.json();
+        const userLngLat = userMarker.getLngLat();
+        const origin = `${userLngLat.lat},${userLngLat.lng}`;
+        const destination = `${pgdLat},${pgdLng}`;
+        const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
 
-        if (data.routes && data.routes.length > 0) {
-            // Chọn route tốt nhất cho PGD
-            let bestRoute = data.routes[0];
-            let bestScore = Infinity;
-            
-            console.log(`🏢 Analyzing ${data.routes.length} PGD route(s):`);
-            
-            data.routes.forEach((route, index) => {
-                const distance = route.distance / 1000;
-                const duration = route.duration / 60;
-                const score = distance * 0.7 + duration * 0.3;
-                
-                console.log(`PGD Route ${index + 1}: ${distance.toFixed(1)}km, ${Math.round(duration)}min`);
-                
-                if (score < bestScore) {
-                    bestScore = score;
-                    bestRoute = route;
-                }
-            });
-            
-            const route = bestRoute;
-
-            // Thêm route vào map - Style như Google Maps
-            const geojson = {
-                type: 'Feature',
-                properties: {},
-                geometry: route.geometry
-            };
-
-            // Lưu route data để restore sau khi đổi style
-            currentRouteGeojson = geojson;
-
-            // Xóa route cũ nếu có
-            if (map.getSource('route')) {
-                if (map.getLayer('route-background')) map.removeLayer('route-background');
-                if (map.getLayer('route')) map.removeLayer('route');
-                map.removeSource('route');
-            }
-
-            map.addSource('route', {
-                type: 'geojson',
-                data: geojson
-            });
-
-            // Route background - viền ngoài đậm
-            map.addLayer({
-                id: 'route-background',
-                type: 'line',
-                source: 'route',
-                layout: {
-                    'line-join': 'round',
-                    'line-cap': 'round'
-                },
-                paint: {
-                    'line-color': '#1557b0',
-                    'line-width': 10,
-                    'line-opacity': 0.8
-                }
-            });
-            
-            // Route main - đường chính như Google Maps
-            map.addLayer({
-                id: 'route',
-                type: 'line',
-                source: 'route',
-                layout: {
-                    'line-join': 'round',
-                    'line-cap': 'round'
-                },
-                paint: {
-                    'line-color': '#4285F4',
-                    'line-width': 7,
-                    'line-opacity': 1
-                }
-            });
-
-            routeSourceAdded = true;
-
-            // Zoom về user với bearing theo hướng đi
-            const userPos = [userLngLat.lng, userLngLat.lat];
-            const destPos = [pgdLng, pgdLat];
-            
-            // Tính bearing từ user đến destination
-            const bearing = calculateBearing(userPos, destPos);
-            
-            // Zoom sâu về user như Google Maps - PGD
-            map.flyTo({
-                center: userPos,
-                zoom: 18.5, // Zoom sâu hơn như Google Maps
-                bearing: bearing,
-                pitch: 45,
-                duration: 2000
-            });
-
-            const distance = (route.distance / 1000).toFixed(1);
-            const duration = Math.round(route.duration / 60);
-
-            startSimpleNavigation(pgdName, route, { lat: pgdLat, lng: pgdLng }, distance, duration);
-
-        } else {
-            console.log('Không có route data PGD, vẽ đường thẳng');
-            drawStraightLine([userLngLat.lng, userLngLat.lat], [pgdLng, pgdLat], pgdName);
-        }
-    } catch (error) {
-        console.error('Routing error:', error);
-        drawStraightLine([userLngLat.lng, userLngLat.lat], [pgdLng, pgdLat], pgdName);
+        window.open(url, '_blank');
+        if ('vibrate' in navigator) navigator.vibrate(100);
+        pendingNavigation = null;
+        return;
+    } catch (err) {
+        console.error('Failed to open Google Maps for PGD, falling back to in-app routing', err);
     }
 };
 
