@@ -679,15 +679,41 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
         return;
     }
 
-    // Mở Google Maps trực tiếp thay vì vẽ line trong app
+    // Mở Google Maps - ưu tiên app trên mobile
     try {
         const userLngLat = userMarker.getLngLat();
         const origin = `${userLngLat.lat},${userLngLat.lng}`;
         const destination = `${atmLat},${atmLng}`;
-        const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
-
-        // Mở trong tab mới - trên mobile sẽ mở app nếu có
-        window.open(url, '_blank');
+        
+        // Detect mobile device
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+            // Try to open native Google Maps app first
+            const intentUrl = `intent://maps.google.com/maps?daddr=${destination}&saddr=${origin}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+            const iosUrl = `comgooglemaps://?daddr=${destination}&saddr=${origin}&directionsmode=driving`;
+            
+            // For Android
+            if (/Android/i.test(navigator.userAgent)) {
+                console.log('🚗 Opening Google Maps app on Android...');
+                window.location.href = intentUrl;
+            }
+            // For iOS  
+            else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                console.log('🚗 Opening Google Maps app on iOS...');
+                window.location.href = iosUrl;
+                
+                // Fallback to web if app not installed
+                setTimeout(() => {
+                    const webUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+                    window.open(webUrl, '_blank');
+                }, 1500);
+            }
+        } else {
+            // Desktop: open web version
+            const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+            window.open(url, '_blank');
+        }
 
         // Optionally provide a quick haptic feedback on supported devices
         if ('vibrate' in navigator) navigator.vibrate(100);
@@ -710,14 +736,41 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
         return;
     }
 
-    // Mở Google Maps với chỉ đường từ vị trí hiện tại đến PGD
+    // Mở Google Maps - ưu tiên app trên mobile
     try {
         const userLngLat = userMarker.getLngLat();
         const origin = `${userLngLat.lat},${userLngLat.lng}`;
         const destination = `${pgdLat},${pgdLng}`;
-        const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
-
-        window.open(url, '_blank');
+        
+        // Detect mobile device
+        const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        
+        if (isMobile) {
+            // Try to open native Google Maps app first
+            const intentUrl = `intent://maps.google.com/maps?daddr=${destination}&saddr=${origin}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
+            const iosUrl = `comgooglemaps://?daddr=${destination}&saddr=${origin}&directionsmode=driving`;
+            
+            // For Android
+            if (/Android/i.test(navigator.userAgent)) {
+                console.log('🚗 Opening Google Maps app on Android...');
+                window.location.href = intentUrl;
+            }
+            // For iOS  
+            else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+                console.log('🚗 Opening Google Maps app on iOS...');
+                window.location.href = iosUrl;
+                
+                // Fallback to web if app not installed
+                setTimeout(() => {
+                    const webUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+                    window.open(webUrl, '_blank');
+                }, 1500);
+            }
+        } else {
+            // Desktop: open web version
+            const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
+            window.open(url, '_blank');
+        }
         if ('vibrate' in navigator) navigator.vibrate(100);
         pendingNavigation = null;
         return;
