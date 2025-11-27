@@ -171,21 +171,35 @@ window.closeLocationPopup = function () {
     if (popup) popup.remove();
 };
 
-window.enableAllFeaturesAndClose = function () {
+window.enableAllFeaturesAndClose = async function () {
     closeLocationPopup();
     
-    // Bật location tracking ngay
+    // Bật location tracking ngay với retry mechanism
     if (navigator.geolocation) {
-        // Request permissions trước
-        navigator.permissions.query({name: 'geolocation'}).then(function(result) {
-            if (result.state === 'granted' || result.state === 'prompt') {
-                // Bật location
-                document.getElementById('locateBtn').click();
+        try {
+            // Kiểm tra permissions nếu có
+            if ('permissions' in navigator) {
+                const permission = await navigator.permissions.query({name: 'geolocation'});
+                console.log('Permission state:', permission.state);
+                
+                if (permission.state === 'denied') {
+                    alert('Quyền vị trí đã bị từ chối.\n\nVui lòng:\n1. Click vào biểu tượng khóa bên trái URL\n2. Cho phép "Vị trí"\n3. Reload trang và thử lại');
+                    return;
+                }
             }
-        }).catch(() => {
+            
+            // Bật location
+            setTimeout(() => {
+                document.getElementById('locateBtn').click();
+            }, 500);
+            
+        } catch (err) {
+            console.log('Permission check failed, trying direct location request:', err);
             // Fallback: thử bật location trực tiếp
-            document.getElementById('locateBtn').click();
-        });
+            setTimeout(() => {
+                document.getElementById('locateBtn').click();
+            }, 500);
+        }
     }
     
     // Bật compass/orientation (nếu có)
@@ -865,9 +879,15 @@ window.stopSimpleNavigation = function () {
 };
 
 // Button handlers
-document.getElementById('locateBtn').onclick = function () {
+document.getElementById('locateBtn').onclick = async function () {
     if (!navigator.geolocation) {
         alert('Trình duyệt không hỗ trợ định vị!');
+        return;
+    }
+
+    // Kiểm tra HTTPS trên domain khác localhost
+    if (window.location.protocol !== 'https:' && !window.location.hostname.includes('localhost') && window.location.hostname !== '127.0.0.1') {
+        alert('⚠️ Cần HTTPS để sử dụng GPS!\n\nTrang web cần chạy trên HTTPS để trình duyệt cho phép truy cập vị trí.\n\nVui lòng mở trang bằng https://...');
         return;
     }
 
@@ -875,13 +895,35 @@ document.getElementById('locateBtn').onclick = function () {
     button.innerHTML = '⏳ Đang tìm...';
     button.disabled = true;
 
+    // Kiểm tra permissions trước nếu browser hỗ trợ
+    if ('permissions' in navigator) {
+        try {
+            const permission = await navigator.permissions.query({ name: 'geolocation' });
+            console.log('Geolocation permission:', permission.state);
+            
+            if (permission.state === 'denied') {
+                button.innerHTML = '❌ Bị từ chối';
+                alert('Quyền truy cập vị trí bị từ chối.\n\nVui lòng:\n1. Click vào biểu tượng khóa/thông tin trang web\n2. Cho phép "Vị trí"\n3. Reload lại trang và thử lại');
+                setTimeout(() => {
+                    button.innerHTML = '📍 Vị trí';
+                    button.disabled = false;
+                }, 3000);
+                return;
+            }
+        } catch (err) {
+            console.log('Permission check failed:', err);
+            // Tiếp tục với geolocation request thông thường
+        }
+    }
+
     const options = {
         enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 1000
+        timeout: 15000,        // Tăng timeout cho GPS yếu
+        maximumAge: 5000       // Cache 5s để tránh request liên tục
     };
 
     const successHandler = (pos) => {
+        console.log('✅ GPS Success:', pos.coords.accuracy + 'm accuracy');
         updateUserPosition(pos);
         startLocationTracking();
         button.innerHTML = '✅ Đã bật vị trí';
@@ -894,14 +936,73 @@ document.getElementById('locateBtn').onclick = function () {
     const errorHandler = (err) => {
         console.error('Location error:', err);
         button.innerHTML = '❌ Lỗi';
-        alert('Không thể lấy vị trí. Vui lòng kiểm tra cài đặt GPS!');
+        
+        let errorMessage = 'Không thể lấy vị trí. ';
+        
+        // Debug: hiển thị thông tin lỗi chi tiết
+        console.error('Geolocation Error Details:', {
+            code: err.code,
+            message: err.message,
+            PERMISSION_DENIED: err.PERMISSION_DENIED,
+            POSITION_UNAVAILABLE: err.POSITION_UNAVAILABLE,
+            TIMEOUT: err.TIMEOUT
+        });
+
+        switch(err.code) {
+            case err.PERMISSION_DENIED:
+                errorMessage += 'Bạn chưa cho phép truy cập vị trí. Vui lòng:\n\n' +
+                              '1. Bật vị trí trong cài đặt điện thoại\n' +
+                              '2. Cho phép trình duyệt truy cập vị trí\n' +
+                              '3. Reload trang và thử lại\n\n' +
+                              'Error: ' + err.message;
+                break;
+            case err.POSITION_UNAVAILABLE:
+                errorMessage += 'Không thể xác định vị trí. Vui lòng:\n\n' +
+                              '1. Kiểm tra GPS đã bật\n' +
+                              '2. Ra ngoài trời hoặc gần cửa sổ\n' +
+                              '3. Thử lại sau vài giây\n\n' +
+                              'Error: ' + err.message;
+                break;
+            case err.TIMEOUT:
+                errorMessage += 'Hết thời gian chờ GPS. Vui lòng:\n\n' +
+                              '1. Kiểm tra tín hiệu GPS\n' +
+                              '2. Ra ngoài trời để GPS tìm vệ tinh\n' +
+                              '3. Thử lại\n\n' +
+                              'Error: ' + err.message;
+                break;
+            default:
+                errorMessage += 'Lỗi không xác định (Code: ' + err.code + '):\n' + err.message + '\n\nVui lòng thử lại!';
+        }
+        
+        alert(errorMessage);
+        
         setTimeout(() => {
             button.innerHTML = '📍 Vị trí';
             button.disabled = false;
         }, 2000);
     };
 
-    navigator.geolocation.getCurrentPosition(successHandler, errorHandler, options);
+    // Thử getCurrentPosition với options chính
+    console.log('🔄 Requesting GPS with high accuracy...');
+    navigator.geolocation.getCurrentPosition(successHandler, (err) => {
+        console.warn('High accuracy failed:', err.message);
+        
+        // Fallback: thử với accuracy thấp hơn nếu high accuracy fail
+        if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
+            console.log('🔄 Retrying with lower accuracy...');
+            button.innerHTML = '🔄 Thử lại...';
+            
+            const fallbackOptions = {
+                enableHighAccuracy: false,  // Dùng network location
+                timeout: 10000,
+                maximumAge: 10000
+            };
+            
+            navigator.geolocation.getCurrentPosition(successHandler, errorHandler, fallbackOptions);
+        } else {
+            errorHandler(err);
+        }
+    }, options);
 };
 
 document.getElementById('showAllBtn').onclick = function () {
