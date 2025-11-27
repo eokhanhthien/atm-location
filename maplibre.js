@@ -1,7 +1,7 @@
-// MapLibre GL JS Implementation with Real-time Compass & Rotation
-console.log('🗺️ Initializing MapLibre GL JS with real-time compass...');
+// MapLibre GL JS - Fork mã nguồn mở của Mapbox, 100% miễn phí!
+// Tính năng giống hệt Mapbox: Vector tiles, 3D, Rotation, Performance cao
 
-// ATM và PGD data
+// Tọa độ các ATM - TP Cà Mau
 const atms = [
     { lat: 9.169887, lng: 105.146648, name: "ATM VietinBank - Thương Nghiệp" },
     { lat: 9.176391, lng: 105.150386, name: "ATM VietinBank - Lý Thường Kiệt" },
@@ -10,6 +10,7 @@ const atms = [
     { lat: 9.177732, lng: 105.154361, name: "ATM VietinBank - Sense City" }
 ];
 
+// Tọa độ các PGD - TP Cà Mau
 const pgds = [
     { lat: 9.169887, lng: 105.146648, name: "PGD VietinBank - Thương Nghiệp" },
     { lat: 9.176391, lng: 105.150386, name: "PGD VietinBank - Lý Thường Kiệt" },
@@ -17,294 +18,293 @@ const pgds = [
     { lat: 9.175000, lng: 105.148000, name: "PGD VietinBank - Trung Tâm" }
 ];
 
-// Global variables
-let map;
-let userMarker;
-let currentHeading = 0;
-let isNavigating = false;
-let watchPositionId = null;
-let routeLineSource = null;
-let compassTracking = false;
-let lastHeadingUpdate = 0;
-const HEADING_UPDATE_INTERVAL = 50; // 20 FPS for smooth rotation
-
-// Initialize MapLibre GL
-function initializeMap() {
-    map = new maplibregl.Map({
-        container: 'map',
-        style: {
-            version: 8,
-            sources: {
-                'osm': {
-                    type: 'raster',
-                    tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-                    tileSize: 256,
-                    attribution: '© OpenStreetMap contributors'
-                },
-                'satellite': {
-                    type: 'raster',
-                    tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'],
-                    tileSize: 256,
-                    attribution: '© Esri'
-                }
+// Khởi tạo MapLibre map - giống hệt Mapbox API
+const map = new maplibregl.Map({
+    container: 'map',
+    style: {
+        "version": 8,
+        "sources": {
+            "osm": {
+                "type": "raster",
+                "tiles": ["https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"],
+                "tileSize": 256,
+                "attribution": "© OpenStreetMap Contributors"
             },
-            layers: [
-                {
-                    id: 'satellite-layer',
-                    type: 'raster',
-                    source: 'satellite',
-                    layout: { visibility: 'visible' }
-                },
-                {
-                    id: 'osm-layer',
-                    type: 'raster', 
-                    source: 'osm',
-                    layout: { visibility: 'none' }
-                }
-            ]
+            "satellite": {
+                "type": "raster",
+                "tiles": ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+                "tileSize": 256,
+                "attribution": "© Esri"
+            }
         },
-        center: [105.1524, 9.1766], // [lng, lat]
-        zoom: 15,
-        bearing: 0,
-        pitch: 0,
-        dragRotate: true, // Enable rotation with Alt+drag
-        touchZoomRotate: true, // Enable pinch-to-rotate on mobile
-        attributionControl: false
-    });
+        "layers": [
+            {
+                "id": "satellite-layer",
+                "type": "raster",
+                "source": "satellite"
+            }
+        ]
+    },
+    center: [105.1524, 9.1766],
+    zoom: 15,
+    minZoom: 10,
+    maxZoom: 17,
+    pitch: 0,
+    bearing: 0,
+    attributionControl: false
+});
 
-    // Add controls
-    map.addControl(new maplibregl.NavigationControl({
-        showCompass: true,
-        showZoom: true,
-        visualizePitch: true
-    }), 'bottom-left');
+// Thêm navigation controls (zoom, xoay, compass, pitch)
+map.addControl(new maplibregl.NavigationControl({
+    visualizePitch: true,
+    showCompass: true,
+    showZoom: true
+}), 'bottom-left');
 
-    map.on('load', function() {
-        console.log('✅ MapLibre map loaded successfully');
-        
-        // Add markers
-        addATMMarkers();
-        addPGDMarkers();
-        
-        // Auto-request location and compass
-        setTimeout(() => {
-            showLocationPermissionPopup();
-        }, 1000);
-    });
+// Biến toàn cục
+let navigationActive = false;
+let followMode = false;
+let watchPositionId = null;
+let currentUserHeading = 0;
+let lastPosition = null;
+let userMarker = null;
+let atmMarkers = [];
+let pgdMarkers = [];
+let currentRoute = null;
+let currentDestination = null;
+let routeSourceAdded = false;
+let currentRouteGeojson = null;
+let pendingNavigation = null;
+let currentStyle = 'satellite';
+let compassTracking = false;
 
-    // Listen for bearing changes
-    map.on('rotate', function() {
-        updateCompassIndicator();
-    });
+// Performance optimization variables for smooth compass rotation  
+let lastOrientationUpdate = 0;
+const ORIENTATION_THROTTLE = 50; // Max 20 FPS for smooth rotation
+
+// Progressive route throttling
+let lastRouteUpdate = 0;
+const ROUTE_UPDATE_THROTTLE = 2000; // Max 1 update per 2 seconds
+
+// GPS smoothing variables
+let lastValidGPS = null;
+const GPS_ACCURACY_THRESHOLD = 200; // meters - reject readings worse than this (more realistic)
+
+// Tính bearing từ 2 điểm (để xoay map theo hướng đi)
+function calculateBearing(start, end) {
+    const startLat = start[1] * Math.PI / 180;
+    const startLng = start[0] * Math.PI / 180;
+    const endLat = end[1] * Math.PI / 180;
+    const endLng = end[0] * Math.PI / 180;
+    
+    const dLng = endLng - startLng;
+    
+    const y = Math.sin(dLng) * Math.cos(endLat);
+    const x = Math.cos(startLat) * Math.sin(endLat) - Math.sin(startLat) * Math.cos(endLat) * Math.cos(dLng);
+    
+    let bearing = Math.atan2(y, x) * 180 / Math.PI;
+    return (bearing + 360) % 360; // Normalize to 0-360
 }
 
-// Real-time Device Orientation for Compass
-function startRealTimeCompass() {
-    console.log('🧭 Starting real-time compass tracking...');
-    
-    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
-        // iOS 13+ permission
-        DeviceOrientationEvent.requestPermission()
-            .then(response => {
-                if (response === 'granted') {
-                    console.log('✅ iOS orientation permission granted');
-                    setupCompassListeners();
-                } else {
-                    console.log('❌ iOS orientation permission denied');
-                    showCompassFallback();
-                }
-            })
-            .catch(console.error);
-    } else {
-        // Android or older iOS
-        console.log('🤖 Setting up compass for Android/Desktop');
-        setupCompassListeners();
-    }
-}
-
-function setupCompassListeners() {
-    compassTracking = true;
-    
-    // Use both events for maximum compatibility
-    window.addEventListener('deviceorientationabsolute', handleCompassUpdate, true);
-    window.addEventListener('deviceorientation', handleCompassUpdate, true);
-    
-    console.log('🎯 Real-time compass listeners active');
-    
-    // Test compass after 2 seconds
-    setTimeout(() => {
-        if (currentHeading === 0 && !window.compassTested) {
-            console.log('⚠️ Compass might not be working, showing manual controls');
-            window.compassTested = true;
-        }
-    }, 2000);
-}
-
-// Handle compass updates with smooth interpolation
-function handleCompassUpdate(event) {
-    const now = performance.now();
-    if (now - lastHeadingUpdate < HEADING_UPDATE_INTERVAL) {
-        return; // Throttle for performance
-    }
-    lastHeadingUpdate = now;
-    
-    let heading = null;
-    
-    if (event.webkitCompassHeading !== undefined) {
-        // iOS Safari - true compass heading
-        heading = event.webkitCompassHeading;
-    } else if (event.alpha !== null) {
-        // Android Chrome - convert alpha to compass heading
-        if (event.absolute || event.type === 'deviceorientationabsolute') {
-            heading = (360 - event.alpha) % 360;
-        } else {
-            heading = (360 - event.alpha) % 360;
-        }
-    }
-    
-    if (heading !== null && !isNaN(heading)) {
-        // Smooth heading interpolation
-        const smoothedHeading = smoothHeading(currentHeading, heading);
-        currentHeading = smoothedHeading;
-        
-        // Update user marker rotation immediately
-        updateUserMarkerRotation(smoothedHeading);
-        
-        // Optional: Rotate map to follow user heading during navigation
-        if (isNavigating && document.getElementById('followHeadingBtn')?.classList.contains('active')) {
-            map.rotateTo(smoothedHeading, { duration: 200 });
-        }
-        
-        // Debug log (remove in production)
-        if (Math.random() < 0.01) { // Only log 1% of updates
-            console.log(`🧭 Compass: ${smoothedHeading.toFixed(1)}°`);
-        }
-    }
-}
-
-// Smooth heading interpolation to prevent jitter
-function smoothHeading(currentHeading, newHeading) {
-    // Handle 0-360 wrap around
-    let diff = newHeading - currentHeading;
-    if (diff > 180) diff -= 360;
-    if (diff < -180) diff += 360;
-    
-    // Apply smoothing (adjust factor for responsiveness vs smoothness)
-    const smoothingFactor = 0.3; // 0 = no smoothing, 1 = instant
-    const smoothedHeading = currentHeading + (diff * smoothingFactor);
-    
-    return ((smoothedHeading % 360) + 360) % 360;
-}
-
-// Update user marker rotation with CSS transform (fastest method)
-function updateUserMarkerRotation(heading) {
-    if (userMarker && userMarker._element) {
-        const element = userMarker._element;
-        const arrow = element.querySelector('.user-direction-arrow');
-        if (arrow) {
-            // Use CSS transform for immediate rotation
-            arrow.style.transform = `rotate(${heading}deg)`;
-        }
-    }
-}
-
-// Create enhanced user marker with real-time rotation
-function createUserMarker(lngLat, heading = 0) {
+// Tạo marker element cho ATM
+function createATMMarkerElement() {
     const el = document.createElement('div');
-    el.className = 'user-marker-element';
+    el.className = 'atm-marker';
     el.innerHTML = `
-        <div class="user-location-container">
-            <div class="user-pulse-ring"></div>
-            <div class="user-direction-arrow" style="transform: rotate(${heading}deg)">
-                <div class="arrow-beam"></div>
-                <div class="arrow-pointer"></div>
-            </div>
-            <div class="user-location-dot"></div>
+        <div style="width:32px;height:32px;background:#fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.3);border:2px solid #000;">
+            <span style="font-size:16px;transform:rotate(45deg);">🏧</span>
         </div>
     `;
+    return el;
+}
+
+// Tạo marker element cho PGD
+function createPGDMarkerElement() {
+    const el = document.createElement('div');
+    el.className = 'pgd-marker';
+    el.innerHTML = `
+        <div style="width:32px;height:32px;background:#47c0f6;border-radius:50% 50% 50% 0;transform:rotate(-45deg);display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.3);border:2px solid #fff;">
+            <span style="font-size:16px;transform:rotate(45deg);">🏢</span>
+        </div>
+    `;
+    return el;
+}
+
+// Tạo marker element cho user location
+function createUserMarkerElement(heading = 0) {
+    // Compensate for map rotation when creating element
+    const mapBearing = map.getBearing() || 0;
+    const correctedHeading = heading - mapBearing;
     
-    // Add enhanced CSS for smooth rotation
-    const style = document.createElement('style');
-    style.textContent = `
-        .user-marker-element {
-            width: 40px;
-            height: 40px;
-            cursor: pointer;
+    const el = document.createElement('div');
+    el.className = 'user-marker';
+    el.innerHTML = `
+        <div style="position:relative;width:32px;height:32px;transform:rotate(${correctedHeading}deg);transform-origin:center center;">
+            <div style="position:absolute;width:16px;height:16px;background:#4285F4;border:3px solid #fff;border-radius:50%;box-shadow:0 2px 8px rgba(66,133,244,0.4);top:50%;left:50%;transform:translate(-50%,-50%);z-index:2;"></div>
+            <div style="position:absolute;width:30px;height:40px;top:-24px;left:1px;background:linear-gradient(to top,rgba(66,133,244,0.8) 0%,rgba(66,133,244,0.6) 50%,rgba(66,133,244,0.3) 100%);clip-path:polygon(45% 100%,55% 100%,84% 0%,12% 0%);z-index:1;transform-origin:50% 100%;"></div>
+        </div>
+    `;
+    return el;
+}
+
+// Hiển thị popup đơn giản
+function showLocationPopup() {
+    const popup = document.createElement('div');
+    popup.className = 'location-popup-overlay';
+    popup.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    popup.innerHTML = `
+        <div style="background:white;border-radius:12px;padding:24px;max-width:350px;width:100%;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+            <div style="font-size:48px;margin-bottom:16px;">📍</div>
+            <h3 style="margin:0 0 8px 0;color:#003A6E;">Bật Vị Trí & Compass</h3>
+            <p style="margin:0 0 20px 0;color:#666;font-size:14px;">Để sử dụng chỉ đường và xoay map theo hướng</p>
+            <button onclick="enableAllFeaturesAndClose()" style="background:#003A6E;color:white;border:none;padding:12px 24px;border-radius:8px;cursor:pointer;font-size:16px;width:100%;">
+                🚀 Bật Tất Cả
+            </button>
+        </div>
+    `;
+    document.body.appendChild(popup);
+    popup.onclick = (e) => { if (e.target === popup) closeLocationPopup(); };
+}
+
+window.closeLocationPopup = function () {
+    const popup = document.querySelector('.location-popup-overlay');
+    if (popup) popup.remove();
+};
+
+window.enableAllFeaturesAndClose = async function () {
+    closeLocationPopup();
+    
+    // Bật location tracking ngay với retry mechanism
+    if (navigator.geolocation) {
+        try {
+            // Kiểm tra permissions nếu có
+            if ('permissions' in navigator) {
+                const permission = await navigator.permissions.query({name: 'geolocation'});
+                console.log('Permission state:', permission.state);
+                
+                if (permission.state === 'denied') {
+                    alert('Quyền vị trí đã bị từ chối.\n\nVui lòng:\n1. Click vào biểu tượng khóa bên trái URL\n2. Cho phép "Vị trí"\n3. Reload trang và thử lại');
+                    return;
+                }
+            }
+            
+            // Bật location
+            setTimeout(() => {
+                document.getElementById('locateBtn').click();
+            }, 500);
+            
+        } catch (err) {
+            console.log('Permission check failed, trying direct location request:', err);
+            // Fallback: thử bật location trực tiếp
+            setTimeout(() => {
+                document.getElementById('locateBtn').click();
+            }, 500);
         }
-        
-        .user-location-container {
-            position: relative;
-            width: 40px;
-            height: 40px;
+    }
+    
+    // Bật compass/orientation (nếu có)
+    if (window.DeviceOrientationEvent) {
+        // Request orientation permission trên iOS
+        if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+            DeviceOrientationEvent.requestPermission().then(response => {
+                if (response === 'granted') {
+                    console.log('✅ Compass permission granted');
+                    startCompassTracking();
+                }
+            }).catch(console.error);
+        } else {
+            // Android hoặc browser khác - bắt đầu luôn
+            startCompassTracking();
         }
+    }
+};
+
+// Cập nhật vị trí user
+function updateUserPosition(position) {
+    const lat = position.coords.latitude;
+    const lng = position.coords.longitude;
+    const accuracy = position.coords.accuracy || 999;
+    let heading = position.coords.heading;
+
+    // GPS Validation - Filter bad readings
+    if (!isValidGPSCoordinate(lat, lng, accuracy)) {
+        console.log(`⚠️ GPS filtered: lat=${lat}, lng=${lng}, accuracy=${accuracy}m`);
         
-        .user-direction-arrow {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 40px;
-            height: 40px;
-            transform-origin: center center;
-            transition: none; /* No CSS transition for real-time updates */
-            z-index: 3;
+        // If we have no GPS for too long, show message
+        if (!lastValidGPS || (Date.now() - lastValidGPS.timestamp) > 15000) {
+            console.log('📍 Poor GPS signal - try moving to open area or near window');
         }
-        
-        .arrow-beam {
-            position: absolute;
-            top: 2px;
-            left: 50%;
-            width: 0;
-            height: 0;
-            border-left: 8px solid transparent;
-            border-right: 8px solid transparent;
-            border-bottom: 20px solid rgba(26, 115, 232, 0.7);
-            transform: translateX(-50%);
-            filter: blur(1px);
+        return; // Skip this update
+    }
+
+    // Log GPS quality cho debug
+    if (accuracy <= 50) {
+        console.log(`📍 Good GPS: ${accuracy}m accuracy`);
+    } else if (accuracy <= 100) {
+        console.log(`📍 OK GPS: ${accuracy}m accuracy`);
+    } else {
+        console.log(`📍 Poor GPS: ${accuracy}m accuracy (accepted)`);
+    }
+
+    // Smooth GPS position để tránh nhảy lung tung
+    const smoothedPosition = smoothGPSPosition(lat, lng, lastPosition);
+
+    // Tính heading từ chuyển động nếu GPS không có (dùng smoothed position)
+    if ((heading === null || heading === undefined) && lastPosition) {
+        const dLng = smoothedPosition.lng - lastPosition.lng;
+        const dLat = smoothedPosition.lat - lastPosition.lat;
+        if (Math.abs(dLng) > 0.00001 || Math.abs(dLat) > 0.00001) {
+            heading = (Math.atan2(dLng, dLat) * 180 / Math.PI + 360) % 360;
         }
-        
-        .arrow-pointer {
-            position: absolute;
-            top: 4px;
-            left: 50%;
-            width: 0;
-            height: 0;
-            border-left: 5px solid transparent;
-            border-right: 5px solid transparent;
-            border-bottom: 12px solid #1a73e8;
-            transform: translateX(-50%);
-            z-index: 2;
+    }
+
+    lastPosition = { lat: smoothedPosition.lat, lng: smoothedPosition.lng };
+    if (heading !== null && heading !== undefined) {
+        currentUserHeading = heading;
+    }
+
+    // Tạo hoặc cập nhật user marker (dùng smoothed position)
+    if (!userMarker) {
+        const el = createUserMarkerElement(currentUserHeading);
+        userMarker = new maplibregl.Marker({
+            element: el,
+            anchor: 'center'
+        })
+            .setLngLat([smoothedPosition.lng, smoothedPosition.lat])
+            .addTo(map);
+
+        // Center lần đầu với animation mượt (dùng smoothed position)
+        map.flyTo({
+            center: [smoothedPosition.lng, smoothedPosition.lat],
+            zoom: 16,
+            duration: 1500,
+            essential: true
+        });
+    } else {
+        // Cập nhật vị trí và hướng (dùng smoothed position)
+        userMarker.setLngLat([smoothedPosition.lng, smoothedPosition.lat]);
+
+        // Cập nhật heading rotation (sẽ được handle bởi compass tracking)
+        const container = userMarker.getElement().querySelector('div > div');
+        if (container) {
+            container.style.transform = `rotate(${currentUserHeading}deg)`;
         }
-        
-        .user-location-dot {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 16px;
-            height: 16px;
-            background: #4285F4;
-            border: 3px solid white;
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-            z-index: 4;
-        }
-        
-        .user-pulse-ring {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            width: 36px;
-            height: 36px;
-            border: 2px solid rgba(66, 133, 244, 0.4);
-            border-radius: 50%;
-            transform: translate(-50%, -50%);
-            animation: pulse 2s infinite ease-out;
-            z-index: 1;
-        }
-        
-        @keyframes pulse {
-            0% { transform: translate(-50%, -50%) scale(0.8); opacity: 1; }
-            70% { transform: translate(-50%, -50%) scale(1.4); opacity: 0.4; }
+    }
+
+    // Bỏ auto follow - user có thể xoay map tự do
+    // Follow mode chỉ hoạt động khi user bật thủ công, không tự động trong navigation
+    if (followMode && !navigationActive) {
+        // Chỉ follow khi user bật thủ công và không đang navigation
+        map.easeTo({
+            center: [smoothedPosition.lng, smoothedPosition.lat],
+            duration: 800,
+            essential: true
+        });
+    }
+
+    // Progressive route - ẩn phần đã đi qua khi navigation (dùng smoothed position)
+    if (navigationActive && currentRouteGeojson) {
+        updateProgressiveRoute(smoothedPosition.lat, smoothedPosition.lng);
     }
 
     // Thực hiện navigation đang chờ
