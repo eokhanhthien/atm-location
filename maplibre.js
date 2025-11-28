@@ -3,19 +3,36 @@
 
 // Tọa độ các ATM - TP Cà Mau
 const atms = [
-    { lat: 9.169887, lng: 105.146648, name: "ATM VietinBank - Thương Nghiệp" },
-    { lat: 9.176391, lng: 105.150386, name: "ATM VietinBank - Lý Thường Kiệt" },
+    { lat: 9.17046659, lng: 105.14687550, name: "ATM VietinBank - Thương Nghiệp" },
+    { lat: 9.17654345, lng: 105.15038558, name: "ATM VietinBank - Hội sở" },
     { lat: 9.176106, lng: 105.150526, name: "R-ATM VietinBank - Nạp - Rút" },
-    { lat: 9.181793, lng: 105.142854, name: "ATM VietinBank - UBTP" },
-    { lat: 9.177732, lng: 105.154361, name: "ATM VietinBank - Sense City" }
+    { lat: 9.18157757, lng: 105.14324201, name: "ATM VietinBank - UBTP" },
+    { lat: 9.17814523, lng: 105.15452604, name: "ATM VietinBank - Sense City" },
+    { lat: 9.16974971, lng: 105.20597442, name: "ATM VietinBank - Cty Quốc Việt" },
+    { lat: 9.16797753, lng: 105.14562022, name: "ATM VietinBank - PGD Nguyễn Tất Thành" },
+    { lat: 9.17363670, lng: 105.15472057, name: "ATM VietinBank - Bệnh viện sản nhi" },
+    { lat: 9.22830947, lng: 105.06889195, name: "ATM VietinBank - Cty A Hủi" },
+    { lat: 9.18892606, lng: 105.13983672, name: "ATM VietinBank - TTTM Vinvom" },
+    { lat: 9.17235738, lng: 105.16098458, name: "ATM VietinBank - BV Đa khoa tỉnh Cà Mau" },
+    { lat: 9.18920411, lng: 105.14976706, name: "ATM VietinBank - Đài truyền hình Cà Mau" },
+    { lat: 9.18920411, lng: 105.14976706, name: "ATM VietinBank - Đài truyền hình Cà Mau" },
+    { lat: 9.15835258, lng: 105.15373080, name: "ATM VietinBank - Tập đoàn thủy sản Minh Phú" },
+    { lat: 9.18605249, lng: 105.16519344, name: "ATM VietinBank - Điện lực TP Cà Mau" },
+    { lat: 9.046329, lng: 104.837315, name: "ATM VietinBank - PGD Sông Đốc" },
+    { lat: 9.11065705, lng: 105.09978490, name: "ATM VietinBank - Chợ Thạnh Phú" },
+    { lat: 9.16570571, lng: 105.26209227, name: "ATM VietinBank - PGD Cửu Long" },
+    { lat: 9.17950001, lng: 105.14755057, name: "ATM VietinBank - PGD Đề Thám" },
 ];
 
 // Tọa độ các PGD - TP Cà Mau
 const pgds = [
-    { lat: 9.169887, lng: 105.146648, name: "PGD VietinBank - Thương Nghiệp" },
-    { lat: 9.176391, lng: 105.150386, name: "PGD VietinBank - Lý Thường Kiệt" },
-    { lat: 9.181793, lng: 105.142854, name: "PGD VietinBank - UBTP" },
-    { lat: 9.175000, lng: 105.148000, name: "PGD VietinBank - Trung Tâm" }
+    { lat: 9.1674665, lng: 105.1452378, name: "PGD Nguyễn Tất Thành" },
+
+    { lat: 9.1761772, lng: 105.1501371, name: "Hội sở VietinBank Cà Mau " },
+    { lat: 9.1793368, lng: 105.1472386, name: "PGD Đề Thám" },
+    { lat: 9.046531, lng: 104.837321, name: "PGD Sông Đốc" },
+    { lat: 9.178395, lng: 105.144810, name: "PGD Phường 2" },
+    { lat: 9.165845, lng: 105.262057, name: "PGD Cửu Long" },
 ];
 
 // Khởi tạo MapLibre map - giống hệt Mapbox API
