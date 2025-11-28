@@ -5,7 +5,7 @@
     <title>ATM Locator - VietinBank Cà Mau</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" type="image/svg+xml" href="./images/logo.svg">
-    <!-- MapLibre GL JS - Fork mã nguồn mở của Mapbox, 100% miễn phí -->
+    <!-- MapLibre GL JS - Real map rotation support -->
     <link href="https://unpkg.com/maplibre-gl@4.0.2/dist/maplibre-gl.css" rel="stylesheet" />
     <script src="https://unpkg.com/maplibre-gl@4.0.2/dist/maplibre-gl.js"></script>
     <style>
@@ -118,9 +118,7 @@
             position: relative;
             width: 32px;
             height: 32px;
-            transform-origin: center center;
-            /* Fast mobile rotation */
-            transition: transform 0.1s ease-out;
+            /* No rotation needed */
         }
 
         /* Simple mobile direction indicator */
