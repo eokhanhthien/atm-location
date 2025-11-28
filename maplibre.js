@@ -4,12 +4,12 @@
 // Tọa độ các ATM - TP Cà Mau
 const atms = [
     { lat: 9.17046659, lng: 105.14687550, name: "ATM VietinBank - Thương Nghiệp" },
-    { lat: 9.17654345, lng: 105.15038558, name: "ATM VietinBank - Hội sở" },
+    { lat: 9.176366, lng: 105.15038558, name: "ATM VietinBank - Hội sở" },
     { lat: 9.176106, lng: 105.150526, name: "R-ATM VietinBank - Nạp - Rút" },
     { lat: 9.18157757, lng: 105.14324201, name: "ATM VietinBank - UBTP" },
     { lat: 9.17814523, lng: 105.15452604, name: "ATM VietinBank - Sense City" },
     { lat: 9.16974971, lng: 105.20597442, name: "ATM VietinBank - Cty Quốc Việt" },
-    { lat: 9.16797753, lng: 105.14562022, name: "ATM VietinBank - PGD Nguyễn Tất Thành" },
+    { lat: 9.167625, lng: 105.145575, name: "ATM VietinBank - PGD Nguyễn Tất Thành" },
     { lat: 9.17363670, lng: 105.15472057, name: "ATM VietinBank - Bệnh viện sản nhi" },
     { lat: 9.22830947, lng: 105.06889195, name: "ATM VietinBank - Cty A Hủi" },
     { lat: 9.18892606, lng: 105.13983672, name: "ATM VietinBank - TTTM Vinvom" },
@@ -26,10 +26,10 @@ const atms = [
 
 // Tọa độ các PGD - TP Cà Mau
 const pgds = [
-    { lat: 9.1674665, lng: 105.1452378, name: "PGD Nguyễn Tất Thành" },
+    { lat: 9.167641, lng: 105.145504, name: "PGD Nguyễn Tất Thành" },
 
-    { lat: 9.1761772, lng: 105.1501371, name: "Hội sở VietinBank Cà Mau " },
-    { lat: 9.1793368, lng: 105.1472386, name: "PGD Đề Thám" },
+    { lat: 9.176250, lng: 105.150479, name: "Hội sở VietinBank Cà Mau " },
+    { lat: 9.179465, lng: 105.147598, name: "PGD Đề Thám" },
     { lat: 9.046531, lng: 104.837321, name: "PGD Sông Đốc" },
     { lat: 9.178395, lng: 105.144810, name: "PGD Phường 2" },
     { lat: 9.165845, lng: 105.262057, name: "PGD Cửu Long" },
@@ -331,14 +331,14 @@ window.enableAllFeaturesAndClose = async function () {
     setTimeout(() => {
         startCompassTrackingQuietly();
     }, 1500);
-    
+
     console.log('✅ GPS + Compass enabled silently for accurate tracking');
 };
 
 // Silent compass tracking - no popups, no status messages
 async function startCompassTrackingQuietly() {
     console.log('🧭 Starting compass silently...');
-    
+
     if (typeof DeviceOrientationEvent.requestPermission === 'function') {
         // iOS 13+ requires permission
         try {
@@ -362,19 +362,19 @@ async function startCompassTrackingQuietly() {
 // Quiet compass setup - no UI feedback
 function setupCompassTrackingQuiet() {
     if (compassTracking) return; // Already running
-    
+
     compassTracking = true;
-    
+
     compassHandler = (event) => {
         // Throttle updates for performance
         const now = performance.now();
         if (now - lastOrientationUpdate < ORIENTATION_THROTTLE) {
-            return; 
+            return;
         }
         lastOrientationUpdate = now;
-        
+
         let heading = null;
-        
+
         // iOS uses webkitCompassHeading
         if (typeof event.webkitCompassHeading === 'number' && !isNaN(event.webkitCompassHeading)) {
             heading = event.webkitCompassHeading;
@@ -383,17 +383,17 @@ function setupCompassTrackingQuiet() {
         else if (typeof event.alpha === 'number' && !isNaN(event.alpha)) {
             heading = (360 - event.alpha + 360) % 360;
         }
-        
+
         if (heading !== null && !isNaN(heading)) {
             // Smooth heading and update internal tracking
             const smoothedHeading = smoothHeading(heading, currentUserHeading);
             currentUserHeading = smoothedHeading;
-            
+
             // NO visual updates - just internal tracking for accuracy
             // This helps with better position filtering and movement detection
         }
     };
-    
+
     // Add quiet listeners
     window.addEventListener('deviceorientationabsolute', compassHandler, { passive: true });
     window.addEventListener('deviceorientation', compassHandler, { passive: true });
@@ -442,7 +442,7 @@ function updateUserPosition(position) {
             duration: 1500,
             essential: true
         });
-        
+
         console.log('📍 User marker created with enhanced tracking');
     } else {
         // Update position with smooth movement
@@ -537,7 +537,7 @@ function stopLocationTracking() {
         navigator.geolocation.clearWatch(watchPositionId);
         watchPositionId = null;
     }
-    
+
     // Also stop compass when GPS stops
     if (compassTracking && compassHandler) {
         window.removeEventListener('deviceorientationabsolute', compassHandler);
@@ -563,13 +563,13 @@ function startLocationTracking() {
             (position) => {
                 console.log(`✅ GPS Success: ${position.coords.accuracy}m accuracy`);
                 updateUserPosition(position);
-                
+
                 // After first success, upgrade to high accuracy GPS
                 if (gpsOptions.enableHighAccuracy === false) {
                     console.log('🔄 Upgrading to high accuracy GPS...');
                     navigator.geolocation.clearWatch(watchPositionId);
                     watchPositionId = null;
-                    
+
                     setTimeout(() => {
                         startHighAccuracyTracking();
                     }, 1000);
@@ -587,7 +587,7 @@ function startLocationTracking() {
 // Start high accuracy tracking after initial success
 function startHighAccuracyTracking() {
     if (watchPositionId) return; // Already running
-    
+
     const highAccuracyOptions = {
         enableHighAccuracy: true,
         maximumAge: 5000,
@@ -624,17 +624,17 @@ function handleGPSError(error) {
             console.log('❌ GPS permission denied - stopping tracking');
             stopLocationTracking();
             break;
-            
+
         case 2: // POSITION_UNAVAILABLE (kCLErrorLocationUnknown)
             console.log('🔄 GPS unavailable, retrying with network location...');
             retryWithNetworkLocation();
             break;
-            
+
         case 3: // TIMEOUT
             console.log('⏰ GPS timeout, retrying with longer timeout...');
             retryWithExtendedTimeout();
             break;
-            
+
         default:
             console.log('🔄 Unknown GPS error, retrying in 5 seconds...');
             setTimeout(() => {
@@ -662,7 +662,7 @@ function retryWithNetworkLocation() {
         (position) => {
             console.log(`📶 Network location: ${position.coords.accuracy}m accuracy`);
             updateUserPosition(position);
-            
+
             // Try to upgrade back to GPS after 30 seconds
             setTimeout(() => {
                 if (watchPositionId) {
@@ -741,30 +741,30 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
     try {
         // Detect device type
         const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
+
         if (isMobile) {
             // Try native app first, then fallback to web
             if (/Android/i.test(navigator.userAgent)) {
                 console.log('🚗 Opening Google Maps app on Android...');
                 const intentUrl = `intent://maps.google.com/maps?daddr=${destination}&saddr=${origin}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
-                
+
                 try {
                     window.location.href = intentUrl;
                 } catch (e) {
                     console.log('Android app failed, trying web fallback');
                 }
-            } 
+            }
             else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
                 console.log('🚗 Opening Google Maps app on iOS...');
                 const iosUrl = `comgooglemaps://?daddr=${destination}&saddr=${origin}&directionsmode=driving`;
-                
+
                 try {
                     // Create invisible iframe to test app availability
                     const iframe = document.createElement('iframe');
                     iframe.style.display = 'none';
                     iframe.src = iosUrl;
                     document.body.appendChild(iframe);
-                    
+
                     // Clean up iframe after attempt
                     setTimeout(() => {
                         if (iframe.parentNode) {
@@ -775,13 +775,13 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
                     console.log('iOS app failed, trying web fallback');
                 }
             }
-            
+
             // Universal web fallback after short delay - silent
             setTimeout(() => {
                 const webUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
                 window.open(webUrl, '_blank');
             }, 2000);
-            
+
         } else {
             // Desktop: open web version directly - silent
             console.log('🚗 Opening Google Maps web version...');
@@ -801,7 +801,7 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
         console.error('All Google Maps methods failed:', err);
         // Only show error feedback - no success messages
         alert('Không thể mở Google Maps, thử lại sau');
-        
+
         // Offer in-app routing as last resort
         setTimeout(() => {
             if (confirm('Không thể mở Google Maps. Bạn có muốn xem đường đi trên bản đồ này không?')) {
@@ -827,29 +827,29 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
     try {
         // Detect device type
         const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
+
         if (isMobile) {
             if (/Android/i.test(navigator.userAgent)) {
                 console.log('🚗 Opening Google Maps app on Android...');
                 const intentUrl = `intent://maps.google.com/maps?daddr=${destination}&saddr=${origin}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
-                
+
                 try {
                     window.location.href = intentUrl;
                 } catch (e) {
                     console.log('Android app failed, trying web fallback');
                 }
-            } 
+            }
             else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
                 console.log('🚗 Opening Google Maps app on iOS...');
                 const iosUrl = `comgooglemaps://?daddr=${destination}&saddr=${origin}&directionsmode=driving`;
-                
+
                 try {
                     // Create invisible iframe to test app availability
                     const iframe = document.createElement('iframe');
                     iframe.style.display = 'none';
                     iframe.src = iosUrl;
                     document.body.appendChild(iframe);
-                    
+
                     setTimeout(() => {
                         if (iframe.parentNode) {
                             iframe.parentNode.removeChild(iframe);
@@ -859,13 +859,13 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
                     console.log('iOS app failed, trying web fallback');
                 }
             }
-            
+
             // Universal web fallback - silent
             setTimeout(() => {
                 const webUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
                 window.open(webUrl, '_blank');
             }, 2000);
-            
+
         } else {
             // Desktop: web version - silent
             const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
@@ -883,7 +883,7 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
         console.error('All Google Maps methods failed:', err);
         // Only show error feedback - no success messages
         alert('Không thể mở Google Maps, thử lại sau');
-        
+
         setTimeout(() => {
             if (confirm('Không thể mở Google Maps. Bạn có muốn xem đường đi trên bản đồ này không?')) {
                 drawStraightLine([userLngLat.lng, userLngLat.lat], [pgdLng, pgdLat], pgdName);
@@ -1118,8 +1118,8 @@ document.getElementById('locateBtn').onclick = async function () {
     }
 
     // Check HTTPS requirement
-    if (window.location.protocol !== 'https:' && 
-        !window.location.hostname.includes('localhost') && 
+    if (window.location.protocol !== 'https:' &&
+        !window.location.hostname.includes('localhost') &&
         window.location.hostname !== '127.0.0.1') {
         alert('⚠️ Cần HTTPS để sử dụng GPS!\n\nTrang web cần chạy trên HTTPS để trình duyệr cho phép truy cập vị trí.\n\nVui lòng mở trang bằng https://...');
         return;
@@ -1160,7 +1160,7 @@ document.getElementById('locateBtn').onclick = async function () {
         console.log(`✅ Initial GPS Success: ${pos.coords.accuracy}m accuracy`);
         updateUserPosition(pos);
         startLocationTracking(); // Start continuous tracking
-        
+
         button.innerHTML = '✅ Đã bật vị trí';
         setTimeout(() => {
             button.innerHTML = '📍 Vị trí';
@@ -1187,9 +1187,9 @@ document.getElementById('locateBtn').onclick = async function () {
             (fallbackErr) => {
                 console.error(`Fallback also failed: ${fallbackErr.message}`);
                 button.innerHTML = '❌ Lỗi GPS';
-                
+
                 let errorMessage = 'Không thể lấy vị trí GPS. ';
-                
+
                 switch (fallbackErr.code) {
                     case 1: // PERMISSION_DENIED
                         errorMessage += 'Quyền truy cập bị từ chối.\n\nVui lòng:\n1. Bật GPS trong cài đặt điện thoại\n2. Cho phép trình duyệt truy cập vị trí\n3. Reload trang và thử lại';
@@ -1203,9 +1203,9 @@ document.getElementById('locateBtn').onclick = async function () {
                     default:
                         errorMessage += 'Lỗi không xác định. Vui lòng thử lại sau.';
                 }
-                
+
                 alert(errorMessage);
-                
+
                 setTimeout(() => {
                     button.innerHTML = '📍 Vị trí';
                     button.disabled = false;
@@ -1234,7 +1234,7 @@ document.getElementById('showAllBtn').onclick = function () {
         minLng: 105.14, // Phía Tây TP
         maxLng: 105.17  // Phía Đông TP
     };
-    
+
     const bounds = new maplibregl.LngLatBounds();
     [...atms, ...pgds].forEach(location => {
         // Chỉ thêm những điểm trong nội ô TP Cà Mau
@@ -1243,7 +1243,7 @@ document.getElementById('showAllBtn').onclick = function () {
             bounds.extend([location.lng, location.lat]);
         }
     });
-    
+
     // Nếu không có điểm nào trong bounds, dùng tâm TP Cà Mau
     if (bounds.isEmpty()) {
         map.flyTo({
@@ -1270,7 +1270,7 @@ document.getElementById('showATMBtn').onclick = function () {
         minLat: 9.15, maxLat: 9.19,
         minLng: 105.14, maxLng: 105.17
     };
-    
+
     const bounds = new maplibregl.LngLatBounds();
     atms.forEach(atm => {
         // Chỉ thêm ATM trong nội ô TP
@@ -1279,7 +1279,7 @@ document.getElementById('showATMBtn').onclick = function () {
             bounds.extend([atm.lng, atm.lat]);
         }
     });
-    
+
     if (bounds.isEmpty()) {
         map.flyTo({ center: [105.1524, 9.1766], zoom: 14, duration: 1500 });
     } else {
@@ -1305,7 +1305,7 @@ document.getElementById('showPGDBtn').onclick = function () {
         minLat: 9.15, maxLat: 9.19,
         minLng: 105.14, maxLng: 105.17
     };
-    
+
     const bounds = new maplibregl.LngLatBounds();
     pgds.forEach(pgd => {
         // Chỉ thêm PGD trong nội ô TP
@@ -1314,7 +1314,7 @@ document.getElementById('showPGDBtn').onclick = function () {
             bounds.extend([pgd.lng, pgd.lat]);
         }
     });
-    
+
     if (bounds.isEmpty()) {
         map.flyTo({ center: [105.1524, 9.1766], zoom: 14, duration: 1500 });
     } else {
