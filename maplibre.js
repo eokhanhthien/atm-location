@@ -922,12 +922,33 @@ document.getElementById('showAllBtn').onclick = function () {
     addATMMarkers();
     addPGDMarkers();
 
-    // Fit bounds to all markers
+    // Giới hạn bounds trong nội ô TP Cà Mau (loại bỏ Sông Đốc và Cửu Long)
+    const cityBounds = {
+        minLat: 9.15,   // Phía Nam TP
+        maxLat: 9.19,   // Phía Bắc TP  
+        minLng: 105.14, // Phía Tây TP
+        maxLng: 105.17  // Phía Đông TP
+    };
+    
     const bounds = new maplibregl.LngLatBounds();
     [...atms, ...pgds].forEach(location => {
-        bounds.extend([location.lng, location.lat]);
+        // Chỉ thêm những điểm trong nội ô TP Cà Mau
+        if (location.lat >= cityBounds.minLat && location.lat <= cityBounds.maxLat &&
+            location.lng >= cityBounds.minLng && location.lng <= cityBounds.maxLng) {
+            bounds.extend([location.lng, location.lat]);
+        }
     });
-    map.fitBounds(bounds, { padding: 80, duration: 1500 });
+    
+    // Nếu không có điểm nào trong bounds, dùng tâm TP Cà Mau
+    if (bounds.isEmpty()) {
+        map.flyTo({
+            center: [105.1524, 9.1766],
+            zoom: 14,
+            duration: 1500
+        });
+    } else {
+        map.fitBounds(bounds, { padding: 100, duration: 1500 });
+    }
 
     this.innerHTML = '✅ Hiển thị tất cả';
     setTimeout(() => { this.innerHTML = '🏢 PGD + ATM'; }, 1500);
@@ -939,9 +960,26 @@ document.getElementById('showATMBtn').onclick = function () {
     clearAllMarkers();
     addATMMarkers();
 
+    // Giới hạn bounds ATM trong nội ô TP Cà Mau
+    const cityBounds = {
+        minLat: 9.15, maxLat: 9.19,
+        minLng: 105.14, maxLng: 105.17
+    };
+    
     const bounds = new maplibregl.LngLatBounds();
-    atms.forEach(atm => bounds.extend([atm.lng, atm.lat]));
-    map.fitBounds(bounds, { padding: 80, duration: 1500 });
+    atms.forEach(atm => {
+        // Chỉ thêm ATM trong nội ô TP
+        if (atm.lat >= cityBounds.minLat && atm.lat <= cityBounds.maxLat &&
+            atm.lng >= cityBounds.minLng && atm.lng <= cityBounds.maxLng) {
+            bounds.extend([atm.lng, atm.lat]);
+        }
+    });
+    
+    if (bounds.isEmpty()) {
+        map.flyTo({ center: [105.1524, 9.1766], zoom: 14, duration: 1500 });
+    } else {
+        map.fitBounds(bounds, { padding: 100, duration: 1500 });
+    }
 
     // Hiển thị gợi ý ATM gần nhất
     const nearestATM = findNearestATM();
@@ -957,9 +995,26 @@ document.getElementById('showPGDBtn').onclick = function () {
     clearAllMarkers();
     addPGDMarkers();
 
+    // Giới hạn bounds PGD trong nội ô TP Cà Mau  
+    const cityBounds = {
+        minLat: 9.15, maxLat: 9.19,
+        minLng: 105.14, maxLng: 105.17
+    };
+    
     const bounds = new maplibregl.LngLatBounds();
-    pgds.forEach(pgd => bounds.extend([pgd.lng, pgd.lat]));
-    map.fitBounds(bounds, { padding: 80, duration: 1500 });
+    pgds.forEach(pgd => {
+        // Chỉ thêm PGD trong nội ô TP
+        if (pgd.lat >= cityBounds.minLat && pgd.lat <= cityBounds.maxLat &&
+            pgd.lng >= cityBounds.minLng && pgd.lng <= cityBounds.maxLng) {
+            bounds.extend([pgd.lng, pgd.lat]);
+        }
+    });
+    
+    if (bounds.isEmpty()) {
+        map.flyTo({ center: [105.1524, 9.1766], zoom: 14, duration: 1500 });
+    } else {
+        map.fitBounds(bounds, { padding: 100, duration: 1500 });
+    }
 
     // Hiển thị gợi ý PGD gần nhất
     const nearestPGD = findNearestPGD();
