@@ -3,19 +3,37 @@
 
 // Tọa độ các ATM - TP Cà Mau
 const atms = [
-    { lat: 9.169887, lng: 105.146648, name: "ATM VietinBank - Thương Nghiệp" },
-    { lat: 9.176391, lng: 105.150386, name: "ATM VietinBank - Lý Thường Kiệt" },
+    { lat: 9.17046659, lng: 105.14687550, name: "ATM VietinBank - Thương Nghiệp" },
+    { lat: 9.17654345, lng: 105.15038558, name: "ATM VietinBank - Hội sở" },
     { lat: 9.176106, lng: 105.150526, name: "R-ATM VietinBank - Nạp - Rút" },
-    { lat: 9.181793, lng: 105.142854, name: "ATM VietinBank - UBTP" },
-    { lat: 9.177732, lng: 105.154361, name: "ATM VietinBank - Sense City" }
+    { lat: 9.18157757, lng: 105.14324201, name: "ATM VietinBank - UBTP" },
+    { lat: 9.17814523, lng: 105.15452604, name: "ATM VietinBank - Sense City" },
+    { lat: 9.16974971, lng: 105.20597442, name: "ATM VietinBank - Cty Quốc Việt" },
+    { lat: 9.16797753, lng: 105.14562022, name: "ATM VietinBank - PGD Nguyễn Tất Thành" },
+    { lat: 9.17363670, lng: 105.15472057, name: "ATM VietinBank - Bệnh viện sản nhi" },
+    { lat: 9.22830947, lng: 105.06889195, name: "ATM VietinBank - Cty A Hủi" },
+    { lat: 9.18892606, lng: 105.13983672, name: "ATM VietinBank - TTTM Vinvom" },
+    { lat: 9.17235738, lng: 105.16098458, name: "ATM VietinBank - BV Đa khoa tỉnh Cà Mau" },
+    { lat: 9.18920411, lng: 105.14976706, name: "ATM VietinBank - Đài truyền hình Cà Mau" },
+    { lat: 9.18920411, lng: 105.14976706, name: "ATM VietinBank - Đài truyền hình Cà Mau" },
+    { lat: 9.15835258, lng: 105.15373080, name: "ATM VietinBank - Tập đoàn thủy sản Minh Phú" },
+    { lat: 9.18605249, lng: 105.16519344, name: "ATM VietinBank - Điện lực TP Cà Mau" },
+    { lat: 9.046329, lng: 104.837315, name: "ATM VietinBank - PGD Sông Đốc" },
+    { lat: 9.11065705, lng: 105.09978490, name: "ATM VietinBank - Chợ Thạnh Phú" },
+    { lat: 9.16570571, lng: 105.26209227, name: "ATM VietinBank - PGD Cửu Long" },
+    { lat: 9.17950001, lng: 105.14755057, name: "ATM VietinBank - PGD Đề Thám" },
 ];
 
 // Tọa độ các PGD - TP Cà Mau
 const pgds = [
-    { lat: 9.169887, lng: 105.146648, name: "PGD VietinBank - Thương Nghiệp" },
-    { lat: 9.176391, lng: 105.150386, name: "PGD VietinBank - Lý Thường Kiệt" },
-    { lat: 9.181793, lng: 105.142854, name: "PGD VietinBank - UBTP" },
-    { lat: 9.175000, lng: 105.148000, name: "PGD VietinBank - Trung Tâm" }
+    { lat: 9.1674665, lng: 105.1452378, name: "PGD Nguyễn Tất Thành" },
+
+    { lat: 9.1761772, lng: 105.1501371, name: "Hội sở VietinBank Cà Mau " },
+    { lat: 9.1793368, lng: 105.1472386, name: "PGD Đề Thám" },
+    { lat: 9.046531, lng: 104.837321, name: "PGD Sông Đốc" },
+    { lat: 9.178395, lng: 105.144810, name: "PGD Phường 2" },
+    { lat: 9.165845, lng: 105.262057, name: "PGD Cửu Long" },
+
 ];
 
 // Khởi tạo MapLibre map - giống hệt Mapbox API
@@ -96,12 +114,12 @@ function calculateBearing(start, end) {
     const startLng = start[0] * Math.PI / 180;
     const endLat = end[1] * Math.PI / 180;
     const endLng = end[0] * Math.PI / 180;
-    
+
     const dLng = endLng - startLng;
-    
+
     const y = Math.sin(dLng) * Math.cos(endLat);
     const x = Math.cos(startLat) * Math.sin(endLat) - Math.sin(startLat) * Math.cos(endLat) * Math.cos(dLng);
-    
+
     let bearing = Math.atan2(y, x) * 180 / Math.PI;
     return (bearing + 360) % 360; // Normalize to 0-360
 }
@@ -135,7 +153,7 @@ function createUserMarkerElement(heading = 0) {
     // Compensate for map rotation when creating element
     const mapBearing = map.getBearing() || 0;
     const correctedHeading = heading - mapBearing;
-    
+
     const el = document.createElement('div');
     el.className = 'user-marker';
     el.innerHTML = `
@@ -173,26 +191,26 @@ window.closeLocationPopup = function () {
 
 window.enableAllFeaturesAndClose = async function () {
     closeLocationPopup();
-    
+
     // Bật location tracking ngay với retry mechanism
     if (navigator.geolocation) {
         try {
             // Kiểm tra permissions nếu có
             if ('permissions' in navigator) {
-                const permission = await navigator.permissions.query({name: 'geolocation'});
+                const permission = await navigator.permissions.query({ name: 'geolocation' });
                 console.log('Permission state:', permission.state);
-                
+
                 if (permission.state === 'denied') {
                     alert('Quyền vị trí đã bị từ chối.\n\nVui lòng:\n1. Click vào biểu tượng khóa bên trái URL\n2. Cho phép "Vị trí"\n3. Reload trang và thử lại');
                     return;
                 }
             }
-            
+
             // Bật location
             setTimeout(() => {
                 document.getElementById('locateBtn').click();
             }, 500);
-            
+
         } catch (err) {
             console.log('Permission check failed, trying direct location request:', err);
             // Fallback: thử bật location trực tiếp
@@ -201,7 +219,7 @@ window.enableAllFeaturesAndClose = async function () {
             }, 500);
         }
     }
-    
+
     // Bật compass/orientation (nếu có)
     if (window.DeviceOrientationEvent) {
         // Request orientation permission trên iOS
@@ -229,7 +247,7 @@ function updateUserPosition(position) {
     // GPS Validation - Filter bad readings
     if (!isValidGPSCoordinate(lat, lng, accuracy)) {
         console.log(`⚠️ GPS filtered: lat=${lat}, lng=${lng}, accuracy=${accuracy}m`);
-        
+
         // If we have no GPS for too long, show message
         if (!lastValidGPS || (Date.now() - lastValidGPS.timestamp) > 15000) {
             console.log('📍 Poor GPS signal - try moving to open area or near window');
@@ -321,7 +339,7 @@ function startLocationTracking() {
             maximumAge: 2000,            // Cache 2s để GPS có thời gian lock tốt hơn
             timeout: 12000               // Timeout dài hơn cho GPS quality cao
         };
-        
+
         watchPositionId = navigator.geolocation.watchPosition(
             updateUserPosition,
             (error) => {
@@ -336,7 +354,7 @@ function startLocationTracking() {
             },
             gpsOptions
         );
-        
+
         console.log('📍 GPS tracking started with stability filters');
     }
 }
@@ -356,14 +374,14 @@ function smoothHeading(newHeading, currentHeading) {
     if (currentHeading === null || currentHeading === undefined || currentHeading === 0) {
         return newHeading; // First reading
     }
-    
+
     // Handle 360° wrap-around (0° và 360° là cùng hướng)
     let diff = newHeading - currentHeading;
-    
+
     // Normalize difference to [-180, 180]
     while (diff > 180) diff -= 360;
     while (diff < -180) diff += 360;
-    
+
     // Aggressive smoothing để tránh compass nhảy lung tung
     if (Math.abs(diff) > 45) {
         // Thay đổi rất lớn (>45°) = có thể noise hoặc user xoay nhanh
@@ -383,12 +401,12 @@ function smoothHeading(newHeading, currentHeading) {
 // GPS validation và smoothing functions
 function isValidGPSCoordinate(lat, lng, accuracy) {
     // Basic coordinate validation
-    if (typeof lat !== 'number' || typeof lng !== 'number' || 
+    if (typeof lat !== 'number' || typeof lng !== 'number' ||
         isNaN(lat) || isNaN(lng) ||
         lat < -90 || lat > 90 || lng < -180 || lng > 180) {
         return false;
     }
-    
+
     // Dynamic accuracy filter - more lenient if no good GPS available
     let threshold = GPS_ACCURACY_THRESHOLD;
     if (!lastValidGPS) {
@@ -401,24 +419,24 @@ function isValidGPSCoordinate(lat, lng, accuracy) {
             threshold = 300; // Be more lenient after GPS loss
         }
     }
-    
+
     if (accuracy > threshold) {
         console.log(`📍 GPS accuracy ${accuracy}m > ${threshold}m threshold - rejected`);
         return false;
     }
-    
+
     // Detect impossible jumps (>500m in 1 second = >1800km/h)
     if (lastValidGPS) {
         const distance = getDistance(lat, lng, lastValidGPS.lat, lastValidGPS.lng) * 1000; // meters
         const timeElapsed = Date.now() - lastValidGPS.timestamp; // ms
         const speed = distance / (timeElapsed / 1000) * 3.6; // km/h
-        
+
         if (speed > 200) { // 200 km/h max reasonable speed
             console.log(`🚗 Speed filter: ${speed.toFixed(0)} km/h too fast, rejecting GPS`);
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -428,25 +446,25 @@ function smoothGPSPosition(lat, lng, lastPos) {
         lastValidGPS = { lat, lng, timestamp: Date.now() };
         return { lat, lng };
     }
-    
+
     // Calculate distance moved
     const distance = getDistance(lat, lng, lastPos.lat, lastPos.lng) * 1000; // meters
-    
+
     // If movement is very small (<2m), smooth more aggressively to reduce jitter
     if (distance < 2) {
         const smoothFactor = 0.3; // Use only 30% of new reading
         const smoothedLat = lastPos.lat + (lat - lastPos.lat) * smoothFactor;
         const smoothedLng = lastPos.lng + (lng - lastPos.lng) * smoothFactor;
-        
+
         lastValidGPS = { lat: smoothedLat, lng: smoothedLng, timestamp: Date.now() };
         return { lat: smoothedLat, lng: smoothedLng };
     }
-    
+
     // Normal movement - light smoothing
     const smoothFactor = 0.7;
     const smoothedLat = lastPos.lat + (lat - lastPos.lat) * smoothFactor;
     const smoothedLng = lastPos.lng + (lng - lastPos.lng) * smoothFactor;
-    
+
     lastValidGPS = { lat: smoothedLat, lng: smoothedLng, timestamp: Date.now() };
     return { lat: smoothedLat, lng: smoothedLng };
 }
@@ -464,12 +482,12 @@ function updateUserDirectionFast(heading) {
             if (!container) {
                 container = markerElement.firstElementChild?.firstElementChild; // DOM traversal
             }
-            
+
             if (container) {
                 // Compensate for map rotation - compass luôn chỉ đúng hướng thật
                 const mapBearing = map.getBearing() || 0;
                 const correctedHeading = heading - mapBearing;
-                
+
                 // Direct CSS transform - fastest method
                 container.style.transform = `rotate(${correctedHeading}deg)`;
                 container.style.transition = 'none'; // No transition for realtime
@@ -483,25 +501,25 @@ function updateUserDirectionFast(heading) {
 // Compass tracking functions
 function startCompassTracking() {
     if (compassTracking) return;
-    
+
     compassTracking = true;
     console.log('🧭 Starting compass tracking...');
-    
+
     compassHandler = (event) => {
         // Throttle updates for smooth performance (max 20 FPS)
         const now = performance.now();
         if (now - lastOrientationUpdate < ORIENTATION_THROTTLE) {
-            return; 
+            return;
         }
         lastOrientationUpdate = now;
-        
+
         // Chỉ log khi có data thực sự
         if (event.alpha !== null || event.webkitCompassHeading !== undefined) {
             console.log('🧭 Compass event - alpha:', event.alpha, 'webkit:', event.webkitCompassHeading);
         }
-        
+
         let heading = null;
-        
+
         // iOS uses webkitCompassHeading (0-360) 
         if (typeof event.webkitCompassHeading === 'number' && !isNaN(event.webkitCompassHeading)) {
             heading = event.webkitCompassHeading;
@@ -513,12 +531,12 @@ function startCompassTracking() {
             heading = (360 - event.alpha + 360) % 360;
             console.log('� Android alpha:', event.alpha.toFixed(1) + '° => heading:', heading.toFixed(1) + '°');
         }
-        
+
         if (heading !== null && !isNaN(heading)) {
             // Smooth heading để tránh giật - low-pass filter
             const smoothedHeading = smoothHeading(heading, currentUserHeading);
             currentUserHeading = smoothedHeading;
-            
+
             // Use fast CSS method with requestAnimationFrame for smooth updates
             requestAnimationFrame(() => {
                 if (userMarker) {
@@ -533,7 +551,7 @@ function startCompassTracking() {
                     }
                 }
             });
-            
+
             // Bỏ auto rotation map - user có thể xoay tự do khi navigation
             // Map không tự động xoay theo compass nữa
         } else {
@@ -544,28 +562,28 @@ function startCompassTracking() {
             // Compass có thể chưa sẵn sàng, tiếp tục lắng nghe
         }
     };
-    
+
     // Add event listeners with passive for better mobile performance
     window.addEventListener('deviceorientationabsolute', compassHandler, { passive: true }); // Best accuracy
     window.addEventListener('deviceorientation', compassHandler, { passive: true }); // Fallback
-    
+
     // Test ngay compass có hoạt động không
     console.log('🧭 Compass tracking started, testing...');
     console.log('DeviceOrientationEvent support:', !!window.DeviceOrientationEvent);
     console.log('Current user heading:', currentUserHeading);
-    
+
     // Test với fake compass data
     setTimeout(() => {
         console.log('� Testing compass với fake data...');
         compassHandler({ alpha: 90, beta: 0, gamma: 0 });
     }, 1000);
-    
+
     // Kiểm tra compass sau 3s và đưa ra hướng dẫn
     setTimeout(() => {
         if (currentUserHeading === 0) {
             console.log('⚠️ Compass chưa hoạt động. Nguyên nhân có thể:');
             console.log('1. 🔐 iOS: Chưa cấp quyền DeviceOrientation');
-            console.log('2. 🌐 Cần HTTPS để compass hoạt động'); 
+            console.log('2. 🌐 Cần HTTPS để compass hoạt động');
             console.log('3. 📱 Thiết bị không có magnetometer');
             console.log('💡 Thử di chuyển để test GPS heading');
         } else {
@@ -684,15 +702,15 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
         const userLngLat = userMarker.getLngLat();
         const origin = `${userLngLat.lat},${userLngLat.lng}`;
         const destination = `${atmLat},${atmLng}`;
-        
+
         // Detect mobile device
         const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
+
         if (isMobile) {
             // Try to open native Google Maps app first
             const intentUrl = `intent://maps.google.com/maps?daddr=${destination}&saddr=${origin}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
             const iosUrl = `comgooglemaps://?daddr=${destination}&saddr=${origin}&directionsmode=driving`;
-            
+
             // For Android
             if (/Android/i.test(navigator.userAgent)) {
                 console.log('🚗 Opening Google Maps app on Android...');
@@ -702,7 +720,7 @@ window.routeToATM = async function (atmLat, atmLng, atmName) {
             else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
                 console.log('🚗 Opening Google Maps app on iOS...');
                 window.location.href = iosUrl;
-                
+
                 // Fallback to web if app not installed
                 setTimeout(() => {
                     const webUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
@@ -741,15 +759,15 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
         const userLngLat = userMarker.getLngLat();
         const origin = `${userLngLat.lat},${userLngLat.lng}`;
         const destination = `${pgdLat},${pgdLng}`;
-        
+
         // Detect mobile device
         const isMobile = /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        
+
         if (isMobile) {
             // Try to open native Google Maps app first
             const intentUrl = `intent://maps.google.com/maps?daddr=${destination}&saddr=${origin}&directionsmode=driving#Intent;scheme=https;package=com.google.android.apps.maps;end`;
             const iosUrl = `comgooglemaps://?daddr=${destination}&saddr=${origin}&directionsmode=driving`;
-            
+
             // For Android
             if (/Android/i.test(navigator.userAgent)) {
                 console.log('🚗 Opening Google Maps app on Android...');
@@ -759,7 +777,7 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
             else if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
                 console.log('🚗 Opening Google Maps app on iOS...');
                 window.location.href = iosUrl;
-                
+
                 // Fallback to web if app not installed
                 setTimeout(() => {
                     const webUrl = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(destination)}&travelmode=driving`;
@@ -782,7 +800,7 @@ window.routeToPGD = async function (pgdLat, pgdLng, pgdName) {
 // Vẽ đường thẳng - fallback khi OSRM fail
 function drawStraightLine(start, end, name) {
     console.log('� Drawing straight line fallback from', start, 'to', end);
-    
+
     const geojson = {
         type: 'Feature',
         properties: {},
@@ -826,14 +844,14 @@ function drawStraightLine(start, end, name) {
 
     routeSourceAdded = true;
     console.log('✅ Straight line route created');
-    
+
     // Zoom về user với bearing hướng đến đích
     const userPos = start;
     const destPos = end;
-    
+
     // Tính bearing từ user đến destination
     const bearing = calculateBearing(userPos, destPos);
-    
+
     // Zoom về user với hướng nhìn theo route
     map.flyTo({
         center: userPos,
@@ -953,7 +971,7 @@ document.getElementById('locateBtn').onclick = async function () {
         try {
             const permission = await navigator.permissions.query({ name: 'geolocation' });
             console.log('Geolocation permission:', permission.state);
-            
+
             if (permission.state === 'denied') {
                 button.innerHTML = '❌ Bị từ chối';
                 alert('Quyền truy cập vị trí bị từ chối.\n\nVui lòng:\n1. Click vào biểu tượng khóa/thông tin trang web\n2. Cho phép "Vị trí"\n3. Reload lại trang và thử lại');
@@ -989,9 +1007,9 @@ document.getElementById('locateBtn').onclick = async function () {
     const errorHandler = (err) => {
         console.error('Location error:', err);
         button.innerHTML = '❌ Lỗi';
-        
+
         let errorMessage = 'Không thể lấy vị trí. ';
-        
+
         // Debug: hiển thị thông tin lỗi chi tiết
         console.error('Geolocation Error Details:', {
             code: err.code,
@@ -1001,34 +1019,34 @@ document.getElementById('locateBtn').onclick = async function () {
             TIMEOUT: err.TIMEOUT
         });
 
-        switch(err.code) {
+        switch (err.code) {
             case err.PERMISSION_DENIED:
                 errorMessage += 'Bạn chưa cho phép truy cập vị trí. Vui lòng:\n\n' +
-                              '1. Bật vị trí trong cài đặt điện thoại\n' +
-                              '2. Cho phép trình duyệt truy cập vị trí\n' +
-                              '3. Reload trang và thử lại\n\n' +
-                              'Error: ' + err.message;
+                    '1. Bật vị trí trong cài đặt điện thoại\n' +
+                    '2. Cho phép trình duyệt truy cập vị trí\n' +
+                    '3. Reload trang và thử lại\n\n' +
+                    'Error: ' + err.message;
                 break;
             case err.POSITION_UNAVAILABLE:
                 errorMessage += 'Không thể xác định vị trí. Vui lòng:\n\n' +
-                              '1. Kiểm tra GPS đã bật\n' +
-                              '2. Ra ngoài trời hoặc gần cửa sổ\n' +
-                              '3. Thử lại sau vài giây\n\n' +
-                              'Error: ' + err.message;
+                    '1. Kiểm tra GPS đã bật\n' +
+                    '2. Ra ngoài trời hoặc gần cửa sổ\n' +
+                    '3. Thử lại sau vài giây\n\n' +
+                    'Error: ' + err.message;
                 break;
             case err.TIMEOUT:
                 errorMessage += 'Hết thời gian chờ GPS. Vui lòng:\n\n' +
-                              '1. Kiểm tra tín hiệu GPS\n' +
-                              '2. Ra ngoài trời để GPS tìm vệ tinh\n' +
-                              '3. Thử lại\n\n' +
-                              'Error: ' + err.message;
+                    '1. Kiểm tra tín hiệu GPS\n' +
+                    '2. Ra ngoài trời để GPS tìm vệ tinh\n' +
+                    '3. Thử lại\n\n' +
+                    'Error: ' + err.message;
                 break;
             default:
                 errorMessage += 'Lỗi không xác định (Code: ' + err.code + '):\n' + err.message + '\n\nVui lòng thử lại!';
         }
-        
+
         alert(errorMessage);
-        
+
         setTimeout(() => {
             button.innerHTML = '📍 Vị trí';
             button.disabled = false;
@@ -1039,18 +1057,18 @@ document.getElementById('locateBtn').onclick = async function () {
     console.log('🔄 Requesting GPS with high accuracy...');
     navigator.geolocation.getCurrentPosition(successHandler, (err) => {
         console.warn('High accuracy failed:', err.message);
-        
+
         // Fallback: thử với accuracy thấp hơn nếu high accuracy fail
         if (err.code === err.TIMEOUT || err.code === err.POSITION_UNAVAILABLE) {
             console.log('🔄 Retrying with lower accuracy...');
             button.innerHTML = '🔄 Thử lại...';
-            
+
             const fallbackOptions = {
                 enableHighAccuracy: false,  // Dùng network location
                 timeout: 10000,
                 maximumAge: 10000
             };
-            
+
             navigator.geolocation.getCurrentPosition(successHandler, errorHandler, fallbackOptions);
         } else {
             errorHandler(err);
@@ -1128,11 +1146,11 @@ function calculateDistance(start, end) {
 // Helper functions for nearest suggestions
 function findNearestATM() {
     if (!userMarker) return null;
-    
+
     const userLngLat = userMarker.getLngLat();
     let nearestATM = null;
     let shortestDistance = Infinity;
-    
+
     atms.forEach(atm => {
         const distance = calculateDistance([userLngLat.lng, userLngLat.lat], [atm.lng, atm.lat]);
         if (distance < shortestDistance) {
@@ -1140,17 +1158,17 @@ function findNearestATM() {
             nearestATM = { ...atm, distance: distance };
         }
     });
-    
+
     return nearestATM;
 }
 
 function findNearestPGD() {
     if (!userMarker) return null;
-    
+
     const userLngLat = userMarker.getLngLat();
     let nearestPGD = null;
     let shortestDistance = Infinity;
-    
+
     pgds.forEach(pgd => {
         const distance = calculateDistance([userLngLat.lng, userLngLat.lat], [pgd.lng, pgd.lat]);
         if (distance < shortestDistance) {
@@ -1158,7 +1176,7 @@ function findNearestPGD() {
             nearestPGD = { ...pgd, distance: distance };
         }
     });
-    
+
     return nearestPGD;
 }
 
@@ -1171,11 +1189,11 @@ function showNearestSuggestion(type, nearest) {
         `;
         return;
     }
-    
-    const distanceText = nearest.distance < 1 ? 
-        `${(nearest.distance * 1000).toFixed(0)}m` : 
+
+    const distanceText = nearest.distance < 1 ?
+        `${(nearest.distance * 1000).toFixed(0)}m` :
         `${nearest.distance.toFixed(1)}km`;
-    
+
     document.getElementById('nearestInfo').innerHTML = `
         <div style="background: rgba(255,255,255,0.95); padding: 6px; border-radius: 4px; border-left: 3px solid ${type === 'ATM' ? '#228B22' : '#47c0f6'}; display: flex; align-items: center; gap: 8px;">
             <div style="flex: 1;">
@@ -1254,7 +1272,7 @@ map.on('styledata', () => {
         if (userMarker) {
             userMarker.addTo(map);
         }
-        
+
         // Restore route nếu đang navigation
         if (navigationActive && currentRouteGeojson) {
             // Add route source
@@ -1264,7 +1282,7 @@ map.on('styledata', () => {
                     data: currentRouteGeojson
                 });
             }
-            
+
             // Add route layers
             if (!map.getLayer('route-background')) {
                 map.addLayer({
@@ -1282,7 +1300,7 @@ map.on('styledata', () => {
                     }
                 });
             }
-            
+
             if (!map.getLayer('route')) {
                 map.addLayer({
                     id: 'route',
@@ -1300,14 +1318,14 @@ map.on('styledata', () => {
                     }
                 });
             }
-            
+
             routeSourceAdded = true;
         }
     }, 200);
 });
 
 // Nút về vị trí user ở góc phải dưới
-document.getElementById('centerUserBtn').onclick = function() {
+document.getElementById('centerUserBtn').onclick = function () {
     if (userMarker) {
         const lngLat = userMarker.getLngLat();
         map.flyTo({
@@ -1323,7 +1341,7 @@ document.getElementById('centerUserBtn').onclick = function() {
 };
 
 // Nút satellite toggle ở góc phải dưới
-document.getElementById('satelliteBtn').onclick = function() {
+document.getElementById('satelliteBtn').onclick = function () {
     if (currentStyle === 'satellite') {
         // Chuyển sang street map (OpenStreetMap)
         map.setStyle({
@@ -1388,43 +1406,43 @@ function optimizeRouteGeometry(coordinates) {
     if (!Array.isArray(coordinates) || coordinates.length < 2) {
         return coordinates;
     }
-    
+
     // Remove duplicate consecutive points
     const optimized = [coordinates[0]];
     let totalDistance = 0;
-    
+
     for (let i = 1; i < coordinates.length; i++) {
         const prev = coordinates[i - 1];
         const curr = coordinates[i];
-        
+
         // Calculate distance between points
         const distance = getDistance(prev[1], prev[0], curr[1], curr[0]) * 1000; // meters
         totalDistance += distance;
-        
+
         // Only keep point if it's significant enough (> 5 meters from previous)
         if (distance > 5 || i === coordinates.length - 1) {
             optimized.push(curr);
         }
     }
-    
-    console.log(`📍 Route optimized: ${coordinates.length} → ${optimized.length} points, total: ${(totalDistance/1000).toFixed(1)}km`);
+
+    console.log(`📍 Route optimized: ${coordinates.length} → ${optimized.length} points, total: ${(totalDistance / 1000).toFixed(1)}km`);
     return optimized;
 }
 
 // Enhanced straight line with intermediate points for smoothness  
 function createSmoothStraightLine(start, end, name) {
     console.log('🔗 Creating smooth straight line from', start, 'to', end);
-    
+
     const interpolatePoints = 15; // More points for smoother line
     const coordinates = [];
-    
+
     for (let i = 0; i <= interpolatePoints; i++) {
         const ratio = i / interpolatePoints;
         const lng = start[0] + (end[0] - start[0]) * ratio;
         const lat = start[1] + (end[1] - start[1]) * ratio;
         coordinates.push([lng, lat]);
     }
-    
+
     return coordinates;
 }
 
@@ -1435,7 +1453,7 @@ function updateProgressiveRoute(userLat, userLng) {
     if (now - lastRouteUpdate < ROUTE_UPDATE_THROTTLE) {
         return;
     }
-    
+
     if (!currentRouteGeojson || !currentRouteGeojson.geometry || !currentRouteGeojson.geometry.coordinates) {
         return;
     }
@@ -1450,7 +1468,7 @@ function updateProgressiveRoute(userLat, userLng) {
     for (let i = 0; i < coords.length; i++) {
         const [lng, lat] = coords[i];
         const distance = getDistance(userLat, userLng, lat, lng) * 1000; // meters
-        
+
         if (distance < minDistance) {
             minDistance = distance;
             closestIndex = i;
@@ -1459,12 +1477,12 @@ function updateProgressiveRoute(userLat, userLng) {
 
     // Progressive route - cắt phần đã đi qua ngay khi user di chuyển
     const passedRatio = closestIndex / coords.length;
-    
+
     // Điều kiện cắt route: đã đi >5% và trong 50m từ route
     if (passedRatio > 0.05 && minDistance < 50) { // 5% route và trong 50m (sensitive hơn)
         // Tạo route mới chỉ từ vị trí hiện tại đến cuối
         const remainingCoords = coords.slice(Math.max(0, closestIndex - 2)); // Giữ lại 2 điểm trước để mượt
-        
+
         if (remainingCoords.length >= 2) {
             const updatedGeojson = {
                 type: 'Feature',
@@ -1478,17 +1496,17 @@ function updateProgressiveRoute(userLat, userLng) {
             // Cập nhật route trên map
             if (map.getSource('route')) {
                 map.getSource('route').setData(updatedGeojson);
-                console.log(`🛣️ Route updated: ${(passedRatio*100).toFixed(1)}% completed, ${coords.length}→${remainingCoords.length} points, ${minDistance.toFixed(0)}m from route`);
+                console.log(`🛣️ Route updated: ${(passedRatio * 100).toFixed(1)}% completed, ${coords.length}→${remainingCoords.length} points, ${minDistance.toFixed(0)}m from route`);
                 lastRouteUpdate = now; // Update throttle timestamp
             }
-            
+
             // Cập nhật stored route
             currentRouteGeojson = updatedGeojson;
         }
     } else {
         // Debug info khi không cắt route
         if (minDistance < 200) { // Chỉ log khi gần route
-            console.log(`🛣️ No cut: ${(passedRatio*100).toFixed(1)}% progress, ${minDistance.toFixed(0)}m from route`);
+            console.log(`🛣️ No cut: ${(passedRatio * 100).toFixed(1)}% progress, ${minDistance.toFixed(0)}m from route`);
         }
     }
 }
